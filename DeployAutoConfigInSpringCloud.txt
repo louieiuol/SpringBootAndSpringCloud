@@ -1,0 +1,112 @@
+如何将SpringCloud里config改为自动更新：
+1.
+Server 端安装rabbitMQ
+
+default username: guest
+default password: guest
+default port: 5672
+
+
+
+
+2.
+SpringCloud的主Pom里和 Eureka Pom里, Config模块和客户模块添加依赖:
+   <dependency>
+       <groupId>org.springframework.cloud</groupId>
+       <artifactId>spring-cloud-starter-bus-amqp</artifactId>
+   </dependency>
+
+3.
+Config模块application.yml添加:
+spring:
+  application:
+    name: ruoyi-server
+  rabbitmq:
+    host: 10.0.40.57
+    port: 5672          ## default password: guest
+    username: cetclib    ## default user: guest
+    password: cetc2020@  ## default password: guest
+  cloud:
+    config:
+      server:
+        git:
+          uri: http://10.0.40.49/idt/microservice-backend.git
+          searchPaths: /config-repo
+          force-pull: true
+          username: ludishuai@cetiti.com
+          password: lds22687380
+
+Config模块application.yml改动:
+spring:
+  application:
+    name: ruoyi-server
+    profiles: 移除
+    native: 移除
+
+
+
+
+
+4.
+Eureka模块application.yml添加:
+
+spring:
+  profiles:
+    active: dev
+  rabbitmq:
+    host: 10.0.40.57
+    port: 5672
+    username: cetclib
+    password: cetc2020@
+
+
+
+5.
+客户模块 子模块移除
+
+spring:
+  cloud:
+    config: 删除
+
+6.
+新增一个文件bootstrap.yml
+
+spring:
+  rabbitmq:
+    host: 10.0.40.57
+    port: 5672          ## default password: guest
+    username: cetclib    ## default user: guest
+    password: cetc2020@  ## default password: guest
+  cloud:
+    config:
+      fail-fast: true
+      label: dev-lds0921
+      name: ${spring.application.name}
+      profile: ${spring.profiles.active}
+      enabled: true
+      retry:
+        max-attempts: 6
+    bus:
+      trace:
+        enabled: true
+
+bootstrap.yml里去掉原有的uri
+
+7.
+确保pom里自带actuator的dependecy
+
+2. <dependency>
+3.   <groupId>org.springframework.boot</groupId>
+4.   <artifactId>spring-boot-starter-actuator</artifactId>
+5. </dependency>
+
+8.
+移除原来的config下的application.yml到新的文件夹中
+
+9.
+给controll加上@RefreshScope注解
+
+10.
+以post形式访问配置中心的http://localhost:8030/bus/refresh 来触发配置更新
+
+11.在git里添加webhook
