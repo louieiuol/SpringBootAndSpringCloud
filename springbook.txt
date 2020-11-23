@@ -106,4 +106,22 @@ performer.perform();
 
 注入内部Bean
 
-      
+<bean id="kenny"
+      class = "com.spring.springidol.Instrumentalist">
+      <property name = "song" value = "Jingle Bells" />
+      <property name = "instrument">
+        <bean class= "springinaction.springidol.Saxophone" />
+      </property>
+</bean>
+
+装配集合
+
+<list> 装配list类型的值
+<set> 装配set类型的值 不允许重复
+<map> 装配map类型的值 名称和值可以是任意类型
+<props> 装配properties类型的值 名称和值都必须是String型
+
+2.3 使用表达式装配
+Spring Expression Language SpEL 一种强大简洁的装配方式
+
+3.最小化Spring XML配置
