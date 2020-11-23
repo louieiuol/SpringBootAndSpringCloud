@@ -1,0 +1,24 @@
+1. 安装Docker
+
+2. 从Docker中启动Portainer
+
+$ docker volume create portainer_data
+$ docker run -d -p 8000:8000 -p 9000:9000 --name=portainer --restart=always -v /var/run/docker.sock:/var/run/docker.sock -v portainer_data:/data portainer/portainer-ce
+
+3. 本地浏览器进入localhost:9000 进入UI界面控制portainer
+
+4. Dockerfile中修改 FROM alpine文件 找到对应有java8的 alpine (openjdk:8-alpine)
+
+5. 跑命令文件，打包Docker Image:
+
+$ docker-build.sh
+
+6. 查看所有的Docker Images, 找到对应的image并上传到 DockerHub
+
+$docker images
+$docker image tag {LocalRepository:name} {DockerHubRepository:name}
+$docker push {DockerHubRepository:name}
+
+7. 在Portainer中添加Container
+
+8. 修改IP地址，绑定到Portainer里的Eureka的地址  

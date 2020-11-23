@@ -1,0 +1,109 @@
+Spring采用以下4种关键策略降低Java开发的复杂性：
+1. 基于POJO的轻量级和最小入侵性编程
+2. 通过依赖注入和面向接口实现松耦合
+3. 基于切面和惯例进行声明式编程
+4. 通过切面和模版减少样板代码
+
+
+装配Bean
+1. 创建Spring配置
+ Spring是一个基于容器的框架，我们需要配置Spring来告诉它需要加载哪些Bean和如何装配这些Bean
+ 两种配置Bean的方式
+ 1.XML文件
+ 2.Java注解
+
+Bean在XML中的位置
+在XML文件中声明Bean，Spring配置文件的根元素是来源于Spring Bean命名空间所定义的<bean>元素：
+<beans xmlns=""
+      xmlns:xsi=""
+      xsi:schemaLocation="">
+      <!-- bean declarations go here -->
+</beans>
+
+Java自带多种XML命名空间，通过这些命名空间可以配置Spring容器
+aop 声明切面以及将@AspectJ注解的类代理为Spring切面提供配置元素
+beans 支持声明Bean和装配Bean
+context 为配置Spring 应用上下文提供了配置元素，包括自动检测和自动装配Bean,注入非Spring直接管理的对象
+jee 为声明消息驱动的POJO提供了配置元素
+lang 配置由Groovy, JRuby, BeanShell等脚本实现的Bean
+mvc 启动Spring MVC的能力 例如面向注解的控制器, 视图控制器，和拦截器
+oxm 支持Spring对象到XML的映射配置
+tx 提供声明式事物配置
+util 工具类元素
+
+声明一个Bean
+
+<bean id="duke
+      class="om.spring.springidol.Juggler" />
+
+      <bean> 元素是Spring中最基本的配置单元，通过该元素Spring将创建一个对象。id属性定义了Bean的名字，也作为Bean在Spring容器中的引用.
+
+通过构造器注入
+
+1. 使用默认的构造器
+2. 带一个int参数的构造方法
+
+XML声明方式
+<bean id="duke"
+      class="com.spring.springidol.Juggler">
+      <constructor-arg value= "15"/>
+</bean>
+
+扩展成一个PoeticJuggler
+<bean id="duke"
+      class="com.spring.springidol.Juggler">
+      <constructor-arg value= "15"/>
+      <constructor-arg ref="sonnet29" />
+</bean>
+逻辑类似于
+Poem sonnet29 = new sonnet29();
+Performer duke = new PoeticJuggler(15, sonnet29);
+
+通过工厂方式创建Bean
+Spring 支持通过<bean>元素的factory-method属性来装配工厂创建的Bean
+<bean id= "theStage"
+      class = "com.spring.springidol.Stage"
+      factory_method = "getInstance" />
+
+Bean的作用域
+所有的Bean默认都是单列
+
+如何让容器分配Bean时，每次请求都产生一个新的实例？
+只需要配置Bean的scope属性为prototype即可
+<bean id="ticket"
+      class="com.spring.springidol.Ticket" scope = "prototype"/>
+其他的作用域选项
+singleton 在每一个Spring容器中，一个Bean定义只有一个对象实例 默认
+prototype 允许Bean被实例化任意次
+request 在一次HTTP请求中，每个Bean定义对应一个实例 仅web有效
+session 一个HTTP session中 每个Bean对应一个实例 仅web有效
+
+Bean的初始化和销毁
+使用 init-method和destroy method参数来配置<bean>元素
+<bean id = "auditorium"
+      class = "com.spring.springidol.Auditorium"
+      init-method = "turnOnLights"
+      destroy-method = "turnOffLights" />
+另一种方案是实现InitializingBean和DisposableBean接口
+
+注入Bean属性
+简单的赋值 使用property标签
+<bean id="kenny"
+      class = "com.spring.springidol.Instrumentalist"
+      <property name = "song" value = "Jingle Bells" />
+</bean>
+
+用其他Bean赋值 使用ref
+<bean id="kenny2"
+      class ="come.spring.springidol.Instrumentalist">
+      <property name = "song" value ="Jingle Bells"
+      <property name = "instrument" ref = "saxophone" />
+</bean>
+调用Bean
+ApplicationContext ctx = new ClassPathXmlApplicationContext("com/spring/springidol/spring-idol.xml");
+Performer performer = (Performer) ctx.getBean("kenny");
+performer.perform();
+
+注入内部Bean
+
+      
