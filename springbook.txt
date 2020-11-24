@@ -125,3 +125,101 @@ performer.perform();
 Spring Expression Language SpEL 一种强大简洁的装配方式
 
 3.最小化Spring XML配置
+
+自动装配 autowiring 减少<property> 元素和 <constructor-arg> 元素
+自动检测 autodiscovery 更进一步自动识别哪些类需要配置为bean
+
+4种类型的自动装配
+
+byName 把与Bean属性具有相同名字(或id)的其他Bean自动装配到Bean对应的属性中
+byType 把与Bean属性具有相同类型的其他Bean自动装配到该Bean的对应属性中
+constructor 把与Bean的const 具体相同类型的其他Bean自动装配到Bean构造器对应args中
+autodetect 首先尝试用const进行装配失败了尝试byType
+
+3.2使用注解装配
+
+Spring容器默认禁用注解装配 在使用基于注解的自动装配前 需要在Spring配置中启动它，
+<context:annotation-config> 
+
+3种自动装配注解
+1. @Autowired
+2. @Inject
+3. @Resource
+
+1.@Autowired
+可以对方法进行标注
+@Autowired
+public void setInstrcument(Instrument instrument){
+	this.instrucment = instrucment
+}
+可以对构造器进行标注
+@Autowired
+public Instrumentalist(Instrument instrument){
+	this.instrucment = instrucment 
+}
+可以直接标注属性
+@Autowired
+private Instrument instrument;
+
+可选的自动装配 
+1. 强契约，所标注的属性或者参数必须是可以装配的
+2. Null 也可以接受 @Autowired(required = false)
+
+多个Bean满足装配条件时，使用@Qualifier注解
+@Autowired
+@Qualifier("guitar")
+private Instrument instrument;
+
+还可以使用@Qualifier标注Guitar类
+@Qualifier("stringed")
+public class Guitar implements Instrument{
+	...
+}
+
+创建自定义的限定器(Qualifier)
+
+创建@Stringedinstrument注解来充当限定器 
+
+@Target({ElementType.FIELD, ElementType.PARAMETER, ElementType.TYPE})
+@Retention(RetentionPolicy.RUNTIME)
+@Qualifier
+public @interface StringInstrument{...}
+
+可以用它来代替Qualifier
+
+@StringedInstrument
+public class Guitar implements Instrument{...}
+
+2.@Inject
+类似Autowired
+
+3.注解中使用表达式
+@Value("Eruption")
+private String song;
+
+@Value("#{SystemProperties.myFavoriteSong}")
+private String song;
+
+自动检测Bean 
+<context:component-scan> 允许Spring自动检测Bean和定义Bean
+
+标注Bean
+@Component 通用的构造型组件，标识为Spring组件
+@Controller 标识为SpringMVC里的controller
+@Repository 标识为数据仓库
+@Service 标识该类为服务
+
+过滤组件扫描
+<context: include-filter> 的type和expression属性一起协作来定义组件扫描策略
+过滤器类型
+1.annotation 过滤器扫描使用指定注解所标注的类，通过expression属性指定要扫描的注解
+2.assignable 过滤器扫描派生于expression属性所指定的类型的那些类
+3.aspectj  过滤器扫描与expression属性所指定的AspectJ表达式所匹配的那些类
+4.custom 自定义
+5.regex 扫描正则表达式匹配的类
+
+3.4 使用Spring基于Java的配置
+
+
+
+
