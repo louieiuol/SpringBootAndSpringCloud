@@ -139,7 +139,7 @@ autodetect 首先尝试用const进行装配失败了尝试byType
 3.2使用注解装配
 
 Spring容器默认禁用注解装配 在使用基于注解的自动装配前 需要在Spring配置中启动它，
-<context:annotation-config> 
+<context:annotation-config>
 
 3种自动装配注解
 1. @Autowired
@@ -155,13 +155,13 @@ public void setInstrcument(Instrument instrument){
 可以对构造器进行标注
 @Autowired
 public Instrumentalist(Instrument instrument){
-	this.instrucment = instrucment 
+	this.instrucment = instrucment
 }
 可以直接标注属性
 @Autowired
 private Instrument instrument;
 
-可选的自动装配 
+可选的自动装配
 1. 强契约，所标注的属性或者参数必须是可以装配的
 2. Null 也可以接受 @Autowired(required = false)
 
@@ -178,7 +178,7 @@ public class Guitar implements Instrument{
 
 创建自定义的限定器(Qualifier)
 
-创建@Stringedinstrument注解来充当限定器 
+创建@Stringedinstrument注解来充当限定器
 
 @Target({ElementType.FIELD, ElementType.PARAMETER, ElementType.TYPE})
 @Retention(RetentionPolicy.RUNTIME)
@@ -200,7 +200,7 @@ private String song;
 @Value("#{SystemProperties.myFavoriteSong}")
 private String song;
 
-自动检测Bean 
+自动检测Bean
 <context:component-scan> 允许Spring自动检测Bean和定义Bean
 
 标注Bean
@@ -220,6 +220,33 @@ private String song;
 
 3.4 使用Spring基于Java的配置
 
+定义一个配置类
+在基于Java的配置里使用@Configuration注解的Java类就等价于XML配置中的<beans>元素
 
+@Configuration
+public class SpringIdolConfig{
+  //Bean declaration methods go here
+}
 
+@Configuration注解作为一个标识告知Spring：这个类包含一个或多个Spring Bean的定义，这些Bean定义是使用@Bean注解所标注的方法
 
+声明一个简单的Bean
+使用@Bean注解标注一个方法来定义duke Bean
+
+@Bean
+public Performer duke(){
+  return new Juggler();
+}
+
+使用Spring基于Java的配置进行注入
+
+使用Spring基于Java编写一个返回类实例的方法 直接传值
+为Bean装配另一个Bean的引用
+
+@Bean
+public Performer poeticDuke(){
+  return new PoeticJuggler(sonnet29());
+}
+不会让方法产生新的实例
+
+4. 面向切面的Spring
