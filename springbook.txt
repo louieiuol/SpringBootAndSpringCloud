@@ -219,7 +219,15 @@ private String song;
 5.regex 扫描正则表达式匹配的类
 
 3.4 使用Spring基于Java的配置
+在基于Java配置里使用@Configuration注解的Java类，就等价于XML配置中的<bean>元素
 
 
-
-
+用于解决跨服务调用超时问题: 
+hystrix:
+  metrics:
+    enabled: true
+  command:
+    default:
+      execution:
+        timeout:
+          enabled: false
