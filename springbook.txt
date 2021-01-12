@@ -339,7 +339,7 @@ joinPoint.proceed();                      <- 执行方法
 long end = System.currentTimeMillis();    <- 之后
 }
 
-ProceedingJoinPoint 能让我吗在通知里调用被通知方法
+ProceedingJoinPoint 能让我在通知里调用被通知方法
 通知方法可以完成任何它所需要做的事情，而且如果希望把控制转给被通知的方法时, 我们可以调用ProceedingJoinPoint的proceed()方法
 
 用于解决跨服务调用超时问题: 
@@ -351,3 +351,27 @@ hystrix:
       execution:
         timeout:
           enabled: false
+
+3. AOP 配置元素                                       描述
+<aop: advsior>                  定义AOP通知器
+<aop: after>                    定义AOP后置通知
+<aop: after-returning>          定义AOP after-returning 通知
+<aop: after-throwing> 			定义 after-throwing 通知
+<aop: around>                   定义AOP环绕通知
+<aop: aspect> 					定义切面
+<aop: aspect-autoproxy> 		启动@AspectJ注解驱动的切面
+<aop: before> 					定义 AOP前置通知
+<aop: config> 					顶层的AOP配置元素, 大多的<aop:*> 元素必须包含在<aop:config> 元素内
+<aop: declare-parents> 			为被通知的对象引入额外的接口，并透明的实现
+<aop: pointcut> 				定义切点
+
+
+前置声明和后置通知
+
+<aop: config>
+	<aop: aspect ref = "audience"> 
+		<aop: before pointcut = "execution(* com.springinaction.springidol.Performer.perform(..))*"
+		method="takeSeats" />
+	<aop: after-returning pointcut= "execution(* com.springinaction.springidol.Performer.perform(..))"
+		method="applaud" />
+	
