@@ -368,10 +368,101 @@ hystrix:
 
 前置声明和后置通知
 
-<aop: config>
-	<aop: aspect ref = "audience"> 
-		<aop: before pointcut = "execution(* com.springinaction.springidol.Performer.perform(..))*"
-		method="takeSeats" />
-	<aop: after-returning pointcut= "execution(* com.springinaction.springidol.Performer.perform(..))"
-		method="applaud" />
-	
+<aop:config>
+	<aop:aspect ref = "audience"> 
+		<aop:before pointcut = "execution(* com.springinaction.springidol.Performer.perform(..))*"
+			method="takeSeats" />
+		<aop:after-returning pointcut= "execution(* com.springinaction.springidol.Performer.perform(..))"
+			method="applaud" />
+		<aop:after-throwing pointcut= "execution (* com.springinaction.springidol.Performer.perform(..))"
+			method="demandRefund" />
+	</aop: aspect> 
+</aop:config> 	
+
+为了避免重复定义切点，使用<aop: pointcut>元素定义一个命名切点
+<aop:pointcut id="performance" expression= "*execution(*com.springinaction.springidol.Performer.perform(..))" />
+引用该切点
+<aop:before pointcut-ref="performance" method="takeSeats" />
+
+4.4注解切面
+
+@AspectJ进行标注
+
+@Pointcut注解用于定义一个可以在@AspectJ切面内可重用的切点，注解的值是一个切点表达式
+
+因为Audience类本身包含了所有它所需要定义的切点和通知，所以我们不需要在XML中配置声明的切点和通知。最后一件需要做的事是让Spring将
+Audience应用为一个切面。我们需要在Spring上下文中声明一个自动代理Bean,该Bean如何把@AspectJ注解所标注的Bean转变为代理通知
+为此Spring自带了名为AnnotationAwareAspectJAutoProxyCreator的自动代理创建类。我们需要在Spring上下文中把AnnotationAwareAspectJ
+toProxyCreator注册为一个bean, 简化这样的操作，我们在aop命名空间中提供了<aop:aspectj-autoproxy/>，在Spring上下文中创建一个类，
+它会自动代理一些bean. 
+
+<aop:aspect> 相比于@AspectJ的优势是不需要源码
+
+注解环绕通知 @Around 需要一个ProceedingJointPoint对象 作为方法入参，并在对象上调用proceed()方法
+
+传递参数给所标注的通知
+@Pointcut ("execution (* com.springinaction.springidol. ") + "Thinker.thinkOfSomething(String")) && args(thoughts)*)
+public void thinking(String thoughts){}
+
+@Before("thinking(thoughts")*)
+public void interceptThoughts(String thoughts){
+	System.out.println("Intercepting volunteer's thoughts: "+ thoughts);
+	this.thoughts = thoughts;
+} 
+
+@DeclareParents 等价于 <aop:declare-parents> 
+
+@AspectJ
+public class ContestantIntroducer{
+
+-----------引入Contestant接口-------------------
+@DeclareParents(
+value = "com.springinaction.springidol.Performer+". 
+defaultImpl = "GraciousContestant.class"
+)
+
+public static Contestant contestant;
+}
+
+Contestant 为Performer Bean 引入了Contestant接口
+@DeclareParents 注解3部分组成
+value 属性等同于<aop:declare-parents>的types-matching属性，它标识应该被引入指定接口的Bean类型
+defaultImpl属性等同于<aop:declare-parents>的default-impl属性。它标识该类提供所引入接口的实现
+由@DeclareParents 注解所标注的static属性指定了将被引入的接口
+
+4.5注入AspectJ切面
+
+使用Spring 依赖注入把Bean装配进AspectJ切面中
+public aspect JudgeAspect{
+	public JudgeAspect(){}
+	pointcut performance() : execution (* perform(..)); 
+	after() returning() : performance(){
+		System.out.println(criticismEngine.getCritism());
+	}
+
+	//injected
+	private CriticismEngine criticismEngine;
+	public void setCriticismEngine(CriticismEngine criticismEngine){
+		this.criticismEngine = criticismEngine; 
+	} 
+}
+
+JudgeAspect的主要职责是在表演之后为表演发表评论
+JudgeAspect与一个CritismEngine对象协作，在表演结束时候，调用该对象的getCriticism()方法来发表一个评论
+为了避免JudgeAspect和CritismEngine之间产生不必要的耦合，通过setter依赖注入为JudgeAspect赋予CriticismEngine
+
+如下关系： 
+			通知                 getCritism()
+Performer  <------  JudgeAspect --------------> CritismEngine
+						   ^					     ^
+							\						 |					
+							 \	注入进去				 |
+							  \						 |
+							   \				     |
+								\ 			         |
+
+								  CriticismEngineImple
+
+
+切面也需要注入，如果AspectJ切面需要其他Bean, Spring也可以为AspectJ切面注入依赖
+
