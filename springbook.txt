@@ -1,3 +1,6 @@
+I 第一部分 Spring的核心
+
+
 Spring采用以下4种关键策略降低Java开发的复杂性：
 1. 基于POJO的轻量级和最小入侵性编程
 2. 通过依赖注入和面向接口实现松耦合
@@ -466,3 +469,209 @@ Performer  <------  JudgeAspect --------------> CritismEngine
 
 切面也需要注入，如果AspectJ切面需要其他Bean, Spring也可以为AspectJ切面注入依赖
 
+AspectJ切面不需要Spring就可以织入我们的应用中，但是如果想使用Spring的依赖注入为AspectJ切面注入协作者，那么就需要在Spring
+配置中把切面声明为一个SpringBean. 如下的<bean> 声明会把criticismEngine bean注入到JudgeAspect中
+
+<bean class = "com.sprininaction.springidol.JudgeAspect" factory-method = "aspectOf"
+		<property name="criticismEngine" ref ="criticismEngine" /> 
+</bean> 
+
+通常情况下Spring Bean由Spring容器初始化, 但是AspectJ切面是由AspectJ在运行期创建的。等到Spring有机会为JudgeAspect注入
+CriticismEngine时，JudgeAspect已经被实例化了。我们需要一种方式为Spring获得已经由AspectJ创建的JudgeAspect实例的句柄,从
+而可以注入CriticismEngine. AspectJ提供了一个静态的aspectOf()方法, 该方法返回切面的一个单例. 
+
+JudgeAspect装配CriticismEngineImpl，使用Spring注入为AspectJ切面注入协作者，那么就需要在Spring配置中把切面声明为一个Spring Bean
+如下的<bean>声明会把criticismEngine Bean注入到Judge Aspect中
+
+<bean class = "com.springinaction.springidol.JudgeAspect" factory-method= "aspectOf"
+	<property name= " criticismEngine" ref = "criticismEngine" /> 
+</bean>
+
+简而言之，Spring不能使用<bean>声明来创建一个JudgeAspect实例-它已经在运行时候由AspectJ创建了。Spring通过aspectOf()工厂方法获得切面
+的引用, 然后像<bean> 元素规定的那样在该对象上执行依赖注入
+
+II Spring应用程序的核心组件
+
+5.1 Spring的数据访问哲学
+
+服务对象  ------> DAO接口 
+				    ^
+				    |
+				    |
+				    |
+				    |
+				 DAO实现
+
+服务对象本身并不会处理数据访问, 而是将数据访问委托给DAO, DAO接口确保其与服务对象的松耦合。
+
+好处  1.服务对象易于测试, 因为它们不再于特定的数据访问实现绑定在一起。
+	  2.数据访问是以持久化技术无关的方式来进行访问的，持久化的选择独立于DAO, 只有相关的数据访问方法通过接口来进行发布.
+
+了解Spring数据访问异常体系
+Spring异常体系优于JDBC，几乎为读取和写入数据库所有错误都提供了异常，并不与特定的持久化方式相关联，意味着我们可以使用Spring
+抛出一致的异常，而不用关系所选用的持久化方案。这有助于我们将所选择的持久化机制与数据访问层隔离开来。
+
+JBDC异常                                                          Spring的数据访问异常
+
+BatchUpdateException											CannotAcquireLockException
+DataTruncation													CannotSerializeTransactionException
+SQLException													CleanupFailureException
+SQLWarning														ConcurrencyFailureException
+																DataAccessException	
+																DataAccessResourceFailureException
+																DataIntegrityViolationException
+																DataRetrieveFailureException
+																DeadlockLoserDataAccessException
+																EmptyResultDataAccessException
+																IncorrectResultSizeDataAccessException
+																IncorrectUpdateSemanticsDataAccessException
+																InvalidDataAccessApiUsageException
+																InvalidDataAccessResourceUsageException
+																OptimisticLockingFailureException
+																PermissionDeniedDataAccessException
+																PessimisticLockingFailureException
+																TypeMismatchDataAccessException
+																UncategorizedDataAccessException
+
+5.1.2 数据访问模板化
+
+Spring将数据访问过程中固定的和可变的部分划分为:模板template和回调callback
+Spring的模板类处理数据访问的固定部分-事务控制，管理资源及处理异常。应用程序相关的数据访问，在回调的实现中处理。
+
+Spring的DAO模板类负责通用的数据访问功能，对于应用程序特定的任务，则会回调自定义的DAO回调对象
+
+Spring的DAO模板负责通用的数据访问功能。对于应用程序的特定任务，则会调用自定义的DAO回调对象
+
+1.准备资源 2.开始事务 3.在事务中执行 4. 返回数据 5提交/回滚事务 6.关闭资源和处理错误
+
+针对不同的持久化平台, Spring提供了多个可选的模板。如果直接使用JDBC, 则可选择JDBC template, 如果希望使用对象关系映射框架
+则用hibernate-template或JpaTemplate
+
+模板类(org.springframework.*)                                   用途
+jca.cci.core.CciTemplate                                       JCA CCI连接
+jdbc.core.JdbcTemplate                                         JDBC连接
+jdbc.core.namedparam.NamedParameterJdbcTemplate 			   命名参数的JDBC连接
+jdbc.core.simple.SimpleJdbcTemplate							   Java5简化后的JDBC连接
+orm.hibernate.HibernateTemplate								   Hibernate2.x的Session
+orm.hibernate3.HibernateTemplate							   Hibernate3.x的Session
+orm.ibatis.SqlMapClientTemplate								   iBATIS SqlMap客户端
+orm.jdo.JdoTemplate											   Java数据对象(Java Data Object)的实现
+orm.jpa.Template  											   Java持久化API的实体管理器
+
+
+5.1.3 使用DAO支持类
+基于模板-回调设计，Spring提供了DAO支持类，而将业务自己的DAO类作为它的子类
+
+应用程序DAO -> DAO支持类 -> 数据访问模板 -> 持久化框架 -> 数据库
+
+SpringDAO支持类提供了便携的方式来使用数据访问模板
+
+DAO支持类 														为谁提供DAO支持
+jca.cci.support.CciDaoSupport 								 	JCA CCI连接
+jdbc.core.support.JdbcDaoSupport								JDBC 连接
+jdbc.core.namedparam.NamedParameterJdbcDaoSupport				命名参数的JDBC连接
+jdbc.core.simple.SimpleJdbcDaoSupport							Java5简化后的JDBC连接
+orm.hibernate.support.HibernateDaoSupport						Hibernate2.x的Session
+orm.hibernate3.support.HibernateDaoSupport						Hibernate3.x的Session
+orm.ibatis.support.SqlMapClientDaoSupport						iBATIS SqlMap客户端
+orm.jdo.support.JdoDaoSupport									Java数据对象(Java Data Object)的实现
+orm.jpa.support.JpaDaoSupport									Java持久化API的实体管理器
+
+5.2 配置数据源
+不管选择哪一种Spring Dao的支持方式, 你可能都需要配置一个数据源的引用. Spring提供了在Spring上下文中配置数据源Bean
+的多种方式, 包括： 
+1. 通过JDBC驱动程序定义的数据源
+2. 通过JNDI查找的数据源
+3. 连接池的数据源
+
+5.2.1使用JNDI数据源
+
+Spring应用程序经常部署在Java EE应用服务器中, 如WebSphere, JBoss或者像Tomcat这样Web容器
+利用Spring，我们可以像使用Spring Bean那样配置JNDI中数据源的引用并将其装配到需要的类中.
+<jee:jndi-lookup id="dataSource" 
+	jndi-name="/jdbc/SpitterDS"
+	resources-ref="true" />
+
+jndi-name用于指定JNDI资源中的名称，如果只设置了jndi-name属性，那么就会根据指定的名称查找数据源，
+如果应用程序运行在java程序服务器中，则需要将resource-ref属性设置为true
+
+5.2.2 使用数据源连接池
+
+如果你不能从JNDI中查找数据源, 那么下一个选择就是直接在Spring中配置数据源连接池. DBCP包含了多个提供连接池功能的数据源
+,其中BasicDataSource	是最常用的
+
+
+BasicDataSource的池配置属性								所指定的内容	  					
+initalSize												池启动时创建的连接数量
+maxActive												同一时间可从池中分配的最多连接数，如果设置为0，表示无限制
+maxIdle													池里不会被释放的最多空间连接数，如果设置为0，表示无限制 
+maxOpenPreparedStatements								在同一时间能够从语句池中分配的预处理语句最大数量，如果设置为0，表示无限制 			
+maxWait													在抛出异常前，池等待连接回收的最大时间,设置-1表示无限等待						
+minEvictableTimeMillis									连接池中保持空闲而不被收回的最大时间			
+minIdle													在不创建新连接的情况下，池中保持空闲的最小连接数 
+poolPreparedStatements									是否对预处理语句进行池管理(boolean)
+
+JDBC驱动的数据源
+
+通过JDBC定义驱动是最简单的方式, Spring提供了两种数据源对象供选择
+DriverManagerDataSource: 在每个连接请求时，都会返回一个新建的连接，不进行池化管理
+SingleConnectionDataSource: 在每个连接请求时都会返回同一个连接。尽管SingleConnectionDataSource不是严格 意义上的连接池数据源,
+但是可以视为只有一个连接的池
+
+SingleConnectionDataSource不适用于多线程的应用程序，DriverManagerDataSource支持多线程，但是在每次请求连接时候都会创建新连接
+以性能为代价，所以强烈建议使用数据源连接池
+
+5.4在Spring中集成Hibernate
+
+延迟加载(Lazy load)
+借助延迟加载，我们可以只抓取需要的数据
+
+预先抓取(Eager fetching)
+借助预先抓取，我们可以使用一个查询获取完整的关联对象，预先抓取的功能可以在一个操作中将他们全部从数据库中提取出来，节省了多次查询的成本
+
+级联(Cascading)
+有时，更改数据库同时会修改其他表，我们希望一次操作能将关联的表多表修改
+
+ORM(object-relational mapping)
+Spring对ORM框架的支持提供了这些框架的集成点以及一些附加的服务
+*Spring声明式事务的集成支持
+*透明的异常处理
+*线程安全，轻量级模板类 
+*DAO支持类
+*资源管理
+
+5.4.1 Hibernate概览
+
+在Spring应用程序中使用Hibernate是通过HibernateTemplate进行的，HibernateTemplate简化了使用Hibernate的繁琐工作，
+并且是通过捕获Hibernate特定的异常，然后转换成Spring的非检查型数据库访问异常并重新抛出而实现的
+
+HibernateTemplate职责之一是管理Hibernate的Session，这涉及打开和关闭Session并确保每个事务使用相同的Session，如果
+没有HibernateTemplate, 我们只能让自己的DAO充满了Session管理的样板代码
+
+HibernateTemplate的不足之处在于存在一定程度的入侵性. 当我们在DAO中使用HibernateTemplate时，DAO类就会与Spring API
+产生耦合
+
+Hibernate3引入上下文Session(Contextual Session)，这是Hibernate本身所提供的保证每个事务使用同一Session的方案，因此
+没有必要使用HibernateTemplate保证这一行为了。在使用Hibernate Contextual Session之前，我们需要为Hibernate做一些准备
+工作即在Spring里配置Session Factory
+
+5.4.2 声明Hibernate的Session工厂
+
+使用Hibernate的主要接口时org.hibernate.Session. Session接口提供了基本数据访问功能，CRUD以及从数据库加载对象功能.
+标准方式是借助于Hibernate的SessionFactory接口实现类。除了一些其他的任务，SessionFactory主要负责Hibernate Session
+的打开，关闭以及管理.
+
+在Spring中，我们要通过Spring的某一个Hibernate Session工厂Bean来获取Hibernate的SessionFactory.我们可以在应用程序
+的Spring上下文中，像配置其他Bean那样来配置Hibernate Session工厂
+
+在配置Hibernate Session工厂Bean的时候，我们需要确定持久化域名对象是通过XML文件还是通过注解来进行配置的, 如果你更倾向
+用注解的方式来定义持久化，那需要使用AnnotationSessionFactoryBean来替代LocalSessionFactoryBean
+
+dataSource声明从哪里获得数据库连接
+hibernateProperties声明了要使用哪一种数据库
+packagesToScan属性告诉Spring扫描一个或多个包以查找域类，这些类通过注解方式表明要使用Hibernate进行持久化。
+JPA的@Entity 或者
+
+
+
+				
