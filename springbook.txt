@@ -670,8 +670,270 @@ Hibernate3引入上下文Session(Contextual Session)，这是Hibernate本身所�
 dataSource声明从哪里获得数据库连接
 hibernateProperties声明了要使用哪一种数据库
 packagesToScan属性告诉Spring扫描一个或多个包以查找域类，这些类通过注解方式表明要使用Hibernate进行持久化。
-JPA的@Entity 或者
+JPA的@Entity 或者 @MapperSuperClass 注解以及Hibernate的@Entity 注解进行标注的类都会包含在内
 
+anntotatedClasses属性将应用程序所以持久化类以全限定名的方式明确列出，annototatedClasses属性对于准确指定少量的域类是
+不错的选择。如果你有很多的域类且不想将其全部列出，或者你想自由的添加移除域类而不想修改Spring配置的话,则使用packageToScan
+更合适
 
+5.4.3 构建不依赖于Spring的Hibernate 代码
 
-				
+在没有上下文时候，Spring的Hibernate模板用于保证每个事务使用同一个Session. 既然Hibernate自己能够对其进行管理, 那就没有
+必要使用模板类了。意味着能直接将Hibernate装配到DAO中
+
+@Repository
+public class HibernateSpitterDao implements SpitterDao{
+	private SessionFactory sessionFactory;
+
+	@Autowired
+	public HibernateSpitterDao(SessionFactory sessionFactory){
+		this.sessionFactory = sessionFactory;                     <------ 构造DAO
+	}
+
+	private Session currentSession(){
+		return sessionFactory.getCurrentSession();            <----- 从SessionFactory中获取当前Session
+	}
+
+	private void addSpitter(Spitter spitter){					<------ 使用当前的Session
+		currentSession().save(spitter);                      
+	}
+
+	public Spitter getSpitterById(long id){
+		return (Spliter) currentSession().get(Spitter.class, id);           <------ 使用当前的Session
+	}
+
+	public void saveSpitter(Spitter spitter){
+		currentSession.update(spitter);
+	}
+}
+
+@Autowired 注解可以让Spring自动将一个SessionFactory注入到HibernateSpitterDao的sessionFactory属性中
+接下来在currentSession()方法中，使用这个SessionFactory来获取当前事务的Session.
+
+@Repository 注解能够像其他注解一样被<context:component-scan>所扫描到, 这样不必明确声明HibernateSpitterDao
+Bean了.
+不适用模板的Hibernate DAO添加异常转换功能,我们只需在Spring应用上下文中添加一个PersistenceExceptionTranslation
+PostProcessor Bean.
+
+PersistenceExceptionTranslationPostProcessor是一个Bean的后置处理程序, 它会在所有拥有@Respository注解的类上
+添加一个通知器advsior, 这样就能捕获任何平台相关的异常并以Spring 非检查型数据访问异常的形式抛出
+
+5.5 Spring 与Java 持久化 API
+
+5.5.1 配置实体管理工厂
+基于JPA的应用程序 使用EntityManagerFactory的实现类来获取EntityManager实例 JPA定义了两种类型的实体管理器
+
+应用程序类管理器 Application-managed: 当应用程序向实体管理器工厂直接请求实体管理器时，工厂会创建一个实体管理器。
+在这种模式下，程序要负责打开或关闭实体管理器并在事务中对其进行控制。 这种方法的实体管理器适合不运行在Java EE容器中
+独立的应用程序
+
+容器管理器 Container-managed: 实体管理器是由Java EE创建和管理. 应用程序根本不与实体管理器工厂打交道. 相反，实体管理器
+直接通过注入或者JNDI来获取。容器负责配置实体管理器工厂。这种类型的实体管理器最适合用于Java EE的容器。
+
+以上两种实体管理器实现了同一个EntityManager接口。关键区别不在于EntityManager本身，而是在于EntityManager的创建和管理方式
+应用程序管理类型的EntityManager是由EntityManagerFactory所创建的，而后者是通过PersistenceProvider的createEntityManager
+Factory()方法得到的
+
+这两种实体管理器工厂分别由对应的Spring工厂Bean创建
+
+LocalEntityManagerFactoryBean 生成应用程序管理类型的EntityManagerFactory
+LocalContainerEntityManagerFactoryBean 生成容器管理类型的EntityManagerFactory
+
+使用应用程序管理类型的JPA
+使用容器管理类型的JPA
+
+5.5.2 编写基于JPA的DAO
+
+正如Spring对其他持久化方案的集成，Spring对JPA的集成也提供了JpaTemplate模板以及对应的支持类JpaDaoSupport
+不使用Spring JpaTemplate的DAO
+
+@Repository(*spitterDao*)
+@Transactional
+public class JpaSpitterDao implements SpitterDao {
+	private static final String RECENT_SPITTERS = *SELECT s FROM Spittle s*;
+	private static final String ALL_SPITTERS = *SELECT s FROM Spittle s WHERE s.username = :username*;
+
+	@PersistenceContext
+	private EntityManager em;                   <------ 注入EntityManager
+
+	public void addSpitter(Spitter spitter){
+		em.persist(spitter);                    <------使用EntityManager   
+	}
+
+	public Spitter getSpitterById(long id){
+		return em.find(Spitter.class, id);       <------使用EntityManager   
+	}
+}
+
+JpaSpitterDao使用了EntityManager处理持久化。通过使用EntityManager, Dao非常干净并且干起来就像没有使用Spring的
+DAO, em使用了@PersistentContext 注解，表明需要在Spring应用上下文配置一个PersistenceAnnotationBeanPostProcessor
+
+6 事务管理
+
+ACID 
+原子性 Atomic 事务是由一个或多个活动组成的一个工作单元，原子性确保事务中所有操作全部发生或者全部不发生
+一致性 Consistenct 一旦事务完成，系统必须确保它所建模的业务处于一致的状态。现实的数据不应该被破坏
+隔离性 Isolated 事务允许多个用户对相同的数据进行操作，每个用户的操作不会与其他用户纠缠在一起
+持久性 Durable 一旦事务完成，事务的结果应该持久化，这样就能从任何崩溃的系统中恢复过来
+
+6.2 选择事务管理器
+
+Spring并不直接管理事务，而是提供了多种事务管理器，它们将事务管理的职责委托给JTA或其他持久化机制所提供的平台
+相关的事务实现
+
+事务管理器(org.framework.*)								使用场景
+jca.cci.connection.CciLocalTransactionManager		使用Spring 对JavaEE连接器架构和通用客户端接口提供支持
+jdbc.datasource.DataSourceTransactionManager 	用于Spring对JDBC抽象的支持也可也用于使用iBatis进行持久化的场景                        
+jms.connection.JmsTransactionManager 			用于JMS1.1+
+jms.connection.JmsTranscationManager102			用于JMS1.0.2
+orm.hibernate3.HibernateTranscationManager		用于Hibernate3进行持久化
+orm.jdo.JdoTransactionManager 					用于JDO进行持久化
+orm.jpa.JpaTransactionMagaer 					用于Java持久化API
+transaction.jta.JtaTransactionManager			需要分布式事务或者没有其他的事务管理器满足需求
+transaction.jta.OC4JJtaTransactionManager		用于Oracle的OC4J JEE容器
+transaction.jta.WebLogicJtaTransactionManager	需要分布式事务并且程序应用于WebLogic中
+transaction.jta.WebSphereUowTranscationManager	需要WebSphere中UOWManager所管理的事务
+
+JDBC事务
+如果在应用程序中直接使用JDBC来进行持久化 DataSourceTransactionManager会为你处理事务边界，要注意的是dataScource属性值
+配置成了一个名为dataSource bean的引用。而dataSource是定义在上下文文件中javax.sql.DataSource Bean.
+
+Hibernate事务
+如果应用程序通过Hibernate实现的，那么你需要使用HibernateTranscationManager。 sessionFactory属性需要装配一个Hibernate 
+SessionFactory
+
+JPA事务
+如果使用JPA, 使用Spring中的JpaTranscationManager来处理事务, JpaTransactionManager只需要装配一个JPA实体管理工厂.
+JPATransactionManager将于工厂产生的JPA EntityManager合作来构建事务
+除了将事务应用于JPA操作，JpaTranscationManager还支持将事务应用于简单的JDBC操作中,这些JDBC操作所使用的DataSource与
+EntityManagerFactory所使用的DataSource必须是相同的。为了做到这一点，JpaTransactionManager必须装配一个JpaDialect的
+实现，然后你还需要将jpaDialect Bean装配到JpaTransactionManager中
+
+添加事务的一种方式是在saveSpittle()方法中直接通过编码使用Spring的TransactionTemplate来添加事务性边界。
+
+public void saveSpittle(final Spittle spittle){
+	txTemplate.execute(new TransactionCallback<Void>(){
+		public void doInTransaction(TranscationStatus txStatus){
+			try{
+				spitterDao.saveSpittle(spittle);
+			}catch(RuntimeException e){
+				txStatus.setRollbackOnly();
+				throw e;
+			}
+			return null;
+		}
+	})
+}
+
+为了使用TranscationTemplate, 你需要实现TransactionCallback接口，因为TransactionCallback只有一个要实现的方法，通常使用内部
+匿名类，放在doInTranscation()中.
+
+调用TransactionTemplate实例的execute方法时, 将会执行TransactionCallback实例中的代码.如果代码遇到问题，调用TranscationStatus
+对象的setRollbackOnly()方法将回滚事务，否则如果doInTransaction()成功返回, 事务将会成功提交.
+
+6.4.1定义事务属性
+
+声明式事务是通过事务属性来定义的
+
+1. 传播行为(propagation behavior)								
+
+定义了何时要创建一个事务或者何时使用已有的事务
+
+传播行为														含义
+
+PROPAGAGTION_MANDATORY 				表示该方法必须在事务中运行，当前事务不存在，则抛出异常
+PROPAGAGTION_NESTED					存在一个事务，改方法会在嵌套事务中运行，嵌套事务可以独立于当前事务进行回滚，如果当前事务不存在
+									则行为与PROPAGATION_REQUIRED一样
+PROPAGATION_NEVER					表示当前方法不应该运行在事务上下文当中，如果当前正有事务在运行，抛出异常
+PROPAGATION_NOT_SUPPORT				表示方法不应该运行在事务中，如果在当前事务，该方法运行期间，事务将会被挂起
+PROPAGATION_REQUIRED 				表示方法必须允许与事务中，当前事务存在，则运行于当前事务，否则另起一个新事务
+PROPAGATION_REQUIRED_NEW			表示当前方法必须运行在它自己的事务中，一个新的事务将被启动，如果存在当前事务，
+									则在该方法执行期间，事务会被挂起
+PROPAGATION_SUPPORTS 				表示当前方法不需要事务上下文，但是如果存在当前事务的话，那么该方法会在这个事务中运行
+
+2. 隔离级别 
+
+定义了一个事务可能受其他并发事务影响的程度
+
+脏读 Dirty Reads
+脏读发生在一个事务读取了另一个事务改写但尚未提交数据时候,如果改写在稍后被回滚了，那么第一个事务获取的数据就是无效的
+
+不可重复读 Nonrepeatable read 
+发生在一个事务执行查询两次或者两次以上，但是每次都得到不同的数据，通常因为另一个并发事件在两次查询期间更新了数据
+
+幻读 Phantom read
+一个事务读取了几行数据，接着另一个并发事务插入了一些数据时，在随后的查询中第一个事务就会发现多了一些原本不存在的事务
+
+隔离级别														含义
+ISOLATION_DEFAULT										默认隔离级别
+ISOLATION_READ_UNCOMMITTED								允许读取尚未提交的数据变更，可能会导致脏读，幻读，不可重复读
+ISOLATION_READ_COMMITTED								允许读取并发事务以及提交的数据，可以阻止脏读，但是会有幻读和不可重复读
+ISOLATION_REPEATABLE_READ								对同一字段的多次读取结果一致的，除非数据是被本事务所修改，
+														可以阻止脏读和不可重复读, 但是仍有可能发生幻读
+ISOLATION_SERILAIZABLE									完全服从ACID的隔离级别
+
+3. 只读
+
+4. 事务超时 
+
+5.回滚原则
+
+事务五边形5各方面通过该元素属性来指定
+
+属性 														含义
+isolation 												指定事务的隔离级别
+propagation 											定义事务的传播规则
+read-only												只读
+rollback-for/no-rollback-for							回滚原则
+timeout													超时
+
+定义注解驱动事务
+
+@Transactional(propagation = Propagation.SUPPORTS, readOnly= true)
+
+7 Spring MVC
+
+7.1.1 跟踪Spring MVC的请求
+
+SpringMVC的核心是DispatcherServerlet, 这个Servlet充当SpringMVC的前端控制器
+
+<servelet-name> DispatchServerlet加载时会从一个基于这个Serverlet名字的XML文件中加载Spring应用上下文
+必须声明DispatchServerlet处理哪些URL，比较常见DispatchServerlet匹配模式是*.htm, /*, 或者/app 
+
+*htm 隐式表明响应始终是HTML格式的
+/*将其匹配的话没有映射特定的响应，它表明DispatcherServelet将处理所有的请求
+/app模式 帮助我们区分了DispatcherServerlet处理的内容和其他内容，但这样就会在URL中暴露了实现的细节
+
+建议使用/模式
+
+编写基本的控制器
+
+Web浏览器                  其他客户端
+	\                         /
+	 \                       / 
+	  \						/
+	   \				   /	
+	   	  Web (controller)
+	   	  		|	
+	   	  		|
+	   	  		|
+	   	  		|
+			 Service     --------- Domain
+				|
+				|
+				|
+				|
+			Persistence		
+				|
+				|
+				|
+				|
+			Data Store
+			
+7.2.1 配置注解驱动的Spring MVC 
+DispatchServerlet需要咨询一个或者多个处理器映射来明确将请求分发给哪个控制器
+
+Spring 自带了多个处理器映射供我们选择如下: 
+
+BeanNameUrlHandlerMapping: 根据控制器名字映射到URL
+	
