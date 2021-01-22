@@ -936,4 +936,545 @@ DispatchServerlet需要咨询一个或者多个处理器映射来明确将请求
 Spring 自带了多个处理器映射供我们选择如下: 
 
 BeanNameUrlHandlerMapping: 根据控制器名字映射到URL
-	
+ControllerBeanNameHandlerMapping: 与BeanNameUrlHandlerMapping类似, 根据控制器Bean名字将控制器
+映射到URL, 使用该处理器映射实现，Bean不用遵循URL约定
+ControllerClassNameHandlerMapping: 通过控制器类名作为URL基础将控制器映射到URL
+DefaultAnnotationHandlerMapping: 将请求给使用@Request-Mapping注解的控制器和控制器方法
+SimpleUrlHandlerMapping: 使用定义在Spring应用上下文的属性集合将控制器映射到URL
+
+使用如上处理器只用在Spring中配置Bean,如果找不到处理器映射Bean, DispatcherServerlet将创建并使用BeanName
+UrlHandlerMapping和DefaultAnnotationHandlerMapping
+
+HomeController 首页控制器
+
+@Controller
+public class HomeController{
+	public static final int DEFAULT_SPITES_PER_PAGE = 25;
+	private SpitterService spitterService;										   <----- 声明为控制器			
+
+	@Inject 
+	public HomeController(Spitter spitterService){
+		this.spitterService = spitterService;                                      <----- 注入Spitter Service
+	}
+
+	@RequestMapping({"/", "/home"})                                                <----- 处理对首页的请求
+
+	public String showHomePage(Map<String, Object> model){
+		model.put("spittles", spitterService.getRecentSpitters(DEFAULT_SPITERS_PER_PAGE));  <----- 将Spitter 放入模型中
+		return "home";                                                             <----- 返回要渲染的视图名称
+	}
+}
+
+当要为用户展现信息的时候, SpringMVC可以使用视图解析器来选择合适的视图
+
+视图解析器
+
+BeanNameViewResolver, ContentNegotiationViewResolver, FreeMarkerViewResolver, InternalResourceViewResolver,
+JasperReportsViewResolver, ResourcesBundlerViewResolver, TilesViewResolver, UrlBasedViewResolver, VelocityViewResolver
+VelocityViewResolver, XmlViewResolver, XsltViewResolver
+
+
+7.2.3 完成Spring应用上下文
+
+DispatcherServerlet 会根据一个XML文件来加载其Spring应用的上下文, 而这个文件的名字基于它的<servlet-name>属性来确定. 我们还需要一种方式
+去加载其他的配置文件. 
+ContextLoaderListener是一个Serverlet监听器, 能够加载其他的配置文件到一个Spring的上下文中
+
+7.3处理控制器的输入 
+
+
+@Controller
+@RequestMapping("/spitter")														 <---- 根Url路径
+public class SpitterController{
+	private final SpitterService spitterService;
+
+	@Inject
+	public SpitterController(SpitterService spitterService){
+		this.spitterService = spitterService;
+	}
+
+	@RequestMapping(value = "/spittles", method = "GET")                          <---- 处理针对spitter/spitters的GET请求 
+	public String listSpittleForSpitter{
+		@RequestParam("spitter") String username, Model model){                   <---- 注入参数  
+			Spitter spitter = spitterService.getSpitter(username);
+			model.addAttribute(spitter);
+			model.addAttribute(spitterService.getSpittlesForSpitter(username));   <---- 填充模型
+			return "spittles/list";
+		}
+	}
+} 													
+
+@RequestMapping 的 params属性能够限制处理方法只对包含特定参数的请求进行处理
+
+7.2.4 处理表单的输入
+
+@RequestMapping(method = RequestMethod.POST)
+public String addSpitterFromForm(@Valid Spitter spitter, BindingResult bindingResult){
+	if(bindingResult.hasErrors()){
+		return "spitters/edit"
+	}
+	...
+}
+
+
+@Valid注解表示Spitter在传入之前需要校验
+
+处理带有路径变量的请求 
+
+@RequestMapping(value = "/{username}", method = RequestMethod.GET)
+public String showSpitterProfile(@PathVariable String username, Model model){
+	model.addAttribute(spitterService.getSpitter(username));
+}
+
+路径中{username}是占位符, 他对应了使用@Pathvariable注解的username方法参数
+如果请求路径是/username/habuma 那么habuma将会作为username的值传递到showSpitterProfile()中
+
+定义校验规则
+
+JSR-303的定义了一些注解 
+
+@Size(min=3, max=20, message = "Username must be between 3 and 20 characters long")			   <--- 限制长度
+
+@Pattern(regexp = *^[a-zA-Z0-9]+$), message = "Username must be alphanumeric with no spaces*)  <--- 确保没有空格
+private String username; 
+
+@Size(min=6, max = 20, messgae= "the password must be at least 6 characters long.")    
+private String password;
+
+@Pattern(regexp = *[a-zA-Z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,4}*, message = "Invalid email address") 
+private String email;
+
+处理文件上传
+
+在注册表单上添加一个文件上传域
+修改SpitterController的addSpitterFromForm()以接收上传的文件
+在Spring中配置mutipart文件处理器
+
+public String addSpitterFromForm(@Valid Spitter spitter, BindingResult bindingResult, 
+@RequestParm(value = "image", required = "false", MutipartFile image){
+	try{
+	if(!image.isEmpty()){
+		validateImage(image);
+		saveImage(spitter.getId() + ".jpg, image); 
+		}
+	}catch(ImageUploadException e){
+		bindingResult.reject(e.getMessage());
+		return "...";
+	}
+	return "...";
+}
+
+
+将文件保存在文件系统中
+
+private void saveImage(String filename, MutipartFile image) throws ImageUploadException{
+	try{
+		File file = new File(webRootPath + "/resource/" + filename);
+		FileUtils.writeByteArrayToFile(file, image.getBytes());
+	}catch(IOException e){
+		throw new ImageUploadException("Unable to save image", e);
+	}
+}
+
+第八章 使用Spring Web Flow
+
+第九章 保护Spring应用
+
+9.4认证用户
+
+内存(基于Spring配置) 用户存储库
+基于JDBC的用户存储库
+基于LDAP的用户存储库
+OpenID分散式的用户身份识别系统
+中心认证服务（CAS)
+X.509证书
+基于JAAS的提供者
+
+9.5保护方法调用
+使用 @Secure注解的方法
+使用JSR-250@RolesAllowed注解的方法
+使用Spring方法调用前和调用后注解的方法
+匹配一个或者多个明确声明的切点的方法
+
+9.5.1 使用@Secure注解保护方法调用
+
+@Secure("ROLE_SPITTER")
+public void addSpitter(Spitter spitter){
+	//...
+}
+
+@Secure注解使用一个String数组作为参数。 每个String是一个权限,调用这个方法至少具备其中的一个权限
+通过传递进来的ROLE_SPITTER, 我们告诉Spring Security只允许具有ROLE_SPITTER权限的认证用户才能调用
+saveSpitter()方法
+
+如果传递给@Secure多个权限值, 认证用户必须具备至少其中的一个条件参能进行方法的调用
+
+9.5.2 使用JSR-250 的 @RolesAllowed注解
+
+@RolesAllowed是JSR-250定义的Java标准注解
+
+9.5.3 使用SpEL实现调用前后的安全性
+
+注解 													描述
+@PreAuthorize 						在方法调用之前，基于表达式的计算结果来限制方法的访问
+@PostAuthorize						允许方法调用, 但是如果表达式计算结果为false, 则会抛出一个安全性异常
+@PostFilter 						允许方法调用, 但必须按照表达式来过滤方法的调用
+@PreFilter							允许方法调用, 但必须在进入方法之前过滤输入值
+
+@PreAuthorize 
+
+基于赋予用户的角色, 使用@PreAuthorize来限制访问
+@PreAuthorize("hasRole('ROLE_SPITTER')")
+public void addSpitter(Spitter spitter){
+	//...
+}
+
+@PreAuthorize("(hasRole('Role_SPITTER') and #spittle.text.length() <= 140 or hasRole('ROLE_SPITTER')")
+public void addSpittle(Spittle spittle){
+	//...
+}
+
+
+@PostAuthorize
+
+在调用之后验证权限
+
+@PostAuthorize("returnObject.spitter.username == principle.username")
+public Spittle getSpittleById(long id){
+	//...
+}
+
+
+事后对方法进行过滤
+
+需要保护的并不是被方法的调用，而是方法的返回数据
+
+@PreAuthorize("hasRole('ROLE_SPITTER')")
+@PostFilter("filterObject.spitter.username == principle.name")
+public List<Spittle> getABunchOfSpittles(){
+	...
+}
+
+第十章 使用远程服务
+
+远程方法调用
+* 远程方法调用 RMI
+* Caucho 的 Hessian和Burlap
+* Spring 自己基于HTTP的远程服务
+* 使用JAX-RPC 和JAX-WS的web 服务
+
+RPC模型                                                 适用场景
+远程方法调用RMI 								不考虑网络限制时, 访问/发布基于Java的服务
+Hessian或burlap								考虑网络限制时, 通过HTTP访问/发布Java的服务
+Http invoker								考虑网络限制时, 并希望使用基于XML或专有的Java序列化机制, 访问发布Java服务
+JAX-RPC 和 JAX-WS 							访问/发布平台中立的, 基于SOAP的Web服务
+
+在Spring中, 远程服务被代理, 所以它们能够像其他Spring Bean一样被装配到客户端代码中
+
+		 服务接口
+		  ^  ^
+         /    \
+	    /	   \			
+	   /  关联  \
+	代理 <------	服务
+	  ^  \
+	  |   \
+关联	  |  为远程方法调用处理网络通信细节
+	  |
+	客户端 
+
+
+
+		服务接口	 
+		   ^
+		   |
+		   |
+	---------------------
+	|			  		|	
+	|			  		|	
+服务实现Bean  <----  远程输出器  <----> 客户端
+			  关联  		|	   远程通信
+			  			|
+			  			|
+			  			|
+			  		处理远程方法调用的marshalling
+			  		和unmarshalling
+
+使用RMI导出器将SpitterService的实现发布为RMI服务
+
+10.2.1 发布一个RMI服务
+
+1.编写一个服务实现类, 类中方法必须抛出 java.rmi.RemoteException异常
+2. 创建一个继承于java.rmi.Remote的服务接口
+3. 运行RMI编译器(rmic), 创建客户端Stub类和服务端Skeleton类
+4. 启用RMI注册表, 以便驻留这些服务
+5. 在RMI注册表中注册服务
+
+在Spring中配置RMI服务
+
+RMIServiceExporter可以将任意一个Spring管理的Bean发布为RMI服务.
+RmiServiceExporter将Bean包装在一个适配器类中，然后适配器类被绑定到RMI注册表中，
+并且将请求代理给服务器类
+
+
+	SpitterService
+		 |
+		 |
+		 |
+		 |				 绑定
+	SpitterServiceImpl  ----->  RMI注册表
+
+	RmiServiceExporter通过把POJO包装到服务适配器中, 并将服务适配器绑定到RMI注册表中, 
+	从而将POJO转化成RMI服务
+
+10.2.2 装配RMI服务
+
+try{
+	String serviceUrl = "rmi:/spitter/SpitterService";
+	SpitterService spitterService = (SpitterService) Naming.lookup(serviceUrl);
+	...
+} 
+catch(RemoteException e) {...}
+catch(NotBoundException e) {...}
+catch(MalformURLException e) {...}
+
+问题
+1. 传统的RMI查找会导致三种检查类型异常的一种, 这些异常必须被捕获或者抛出
+2. 需要Spitter服务的任何代码都必须自己负责获取该服务.这属于样板式代码, 与客户端的功能并没有直接关系
+
+
+RMIProxyFactoryBean 是一个工厂Bean, 该Bean可以为RMI服务创建代理. 使用RmiProxyFactoryBean引用一个
+SpitterService的RMI服务需要配置一个bean声明
+
+
+		方法调用
+客户端 ---------->  Spitter服务 | RMI代理 --------> 网络 ----------> Spitter服务 
+							^			 JRMP消息        JRMP消息
+							|
+							|
+							|
+							|
+							|
+					RMIProxy FactoryBean 
+
+
+RmiProxyFactoryBean生成一个代理对象, 该对象代表客户端来负责与远程的RMI服务进行通信.
+客户端通过与服务的接口与代理进行交互, 就如同远程服务就是一个本地POJO
+
+@Autowired
+SpitterService spitterService;
+
+我们可以像本地Bean一样调用
+public List<Spitter> getSpittles(String username){
+	Spitter spitter = spitterService.getSpitter(username);
+	return spitterService.getSpittersForSpitter(spitter);
+}
+
+
+RMI是一种实现远程服务交互非常好的方式, 但是它存在某些限制, RMI很难穿越防火墙, 因为RMI使用任意端口来交互
+--防火墙通常不允许。 RMI同时是基于Java的,意味着客户端和服务端都必须使用Java开发, 因为RMI使用了Java的序列
+机制。
+
+
+Hessian和Burlap 解决RMI限制的远程调用解决方案
+
+使用Hessian 和 burlap发布bean 功能
+
+导出一个Hessian服务
+
+
+
+--------> Dispatch servlet --------> HessianService Explorlar 
+  请求						 分发            
+  											 | 
+  											 |
+  											 |
+  											 |	
+  									SpitterServiceImpl	 
+
+HessianServiceExporter是一个SpringMVC控制器, 它可以接受Hessian请求, 并将这些请求翻译成对POJO的调用，
+从而将POJO导出为一个Hessian服务
+
+配置Hessian控制器
+RmiSerivceExporter和HessianServiceExplorter另外一个区别是, HessianServiceExplorter是基于HTTP的,
+所以HessianServiceExplorter实现为一个Spring MVC控制器. 这意味着为了使用导出的Hessian服务, 我们
+需要执行两个额外的配置步骤
+
+* web.xml中配置Spring的DispatchServerlet,并把我们的应用部署为Web应用
+* 在Spring配置文件中配置一个URL处理器, 并将Hessian服务的URL分发给对应的Hessian服务Bean
+
+
+Burlap服务类似
+
+		方法调用
+客户端 ---------->  Spitter服务 | Hessian/Burlap代理 --------> 网络 ----------> Spitter服务 
+							^			              HTTP            HTTP
+							|
+							|
+							|
+							|
+							|
+					Hessian/Burlap FactoryBean 
+
+HessianProxyFactory和BurlapProxyFactoryBean生成的代理对象负责通过HTTP(Hessian 2进制, Burlap XML)
+与远程对象进行通信
+
+Hessian和Burlap能穿过防火墙, 但是使用私有的对象序列化机制
+
+Spring HTTP invoker 是一个新的远程调用模型, 作为Spring框架的一部分, 来执行基于HTTP的远程调用
+
+10.4.1 将Bean发布为HTTP服务
+
+导出HTTP invoker 服务, 我们需要使用HttpInvokerServiceExporter
+
+类似上面的方法
+
+JAX-WS端点
+
+@WebService注解所标注的类被认为是Web服务的端点, 而使用@WebMethod所标注的方法被认为是操作
+
+装配JAX-WS端点的秘密在于继承 SpringBeanAutowiredSupport. 我们使用@Autowired注解标注端点
+的属性,依赖会自动注入
+
+
+@WebService(serviceName = "SpitterService")
+public class SpitterServiceEndpoint extends SpringBeanAutowiredSupport{         <------ 启动自动装配
+	@Autowired
+	SpitterService spitterService;                                 <------- 自动装配SpittleService
+
+	@WebMethod
+	public void addSpitter(Spittle spittle){
+		spitterService.saveSpittle(spittle);              
+	}
+
+	@WebMethod
+	public void deleteSpittle(long spittleId){
+		spitterService.deleteSpittle(spittleId);                    <------- 委托给SpittleService
+	}
+}
+
+导出独立的JAX-WS端点
+
+Spring的SimpleJaxWsServiceExporter会搜索Spring应用上下文来查找所有使用
+@WebService所标注的注解的Bean.当找到符合的Bean时, SimpleJaxWsServiceExporter
+使用http://localhost:8080/地址将Bean发布为JAX-WS端点
+
+
+@Component
+@WebService(serviceName = "SpitterService")
+public class SpitterServiceEndpoint{
+	//...
+}
+SpitterServiceEndpoint不需要继承SpringBeanAutoWiringSupport 因为他是一个合格的Spring Bean
+不需要任何继承就可以直接装配
+
+在客户端代理JAX-WS服务
+
+
+		方法调用
+客户端 ---------->  Spitter服务 | JAX-WS代理 --------> 网络 ----------> Spitter服务 
+							^			     SOAP消息       SOAP消息
+							|
+							|
+							|
+							|
+							|
+					JaxWsPortProxy FactoryBean 
+JaxWsPortProxyFactoryBean生成可以与远程Web服务交互的代理，这些代理可以被装配到其他Bean中, 
+就像本地POJO一样
+
+
+第11章  Spring 添加Rest功能 
+
+11.1.1  Rest基本原理
+
+Rest
+R- representational 表述性, Rest资源可以用任何形式进行表述，包括XML, JSON
+S- state 状态, 我们更关注资源的状态, 而不是对资源采取的行为
+T- transfer 转移, 转移资源从一个应用到另一个
+
+
+Spring是如何支持REST的
+* 控制器可以处理所有的HTTP方法, 以及主要的Rest方法 GET, PUT, DELETE, POST
+
+* @PathVariable注解使得控制器能够处理参数化的URL
+
+* Spring的视图和视图解析器
+
+* 基于视图的渲染可以使用@ResponseBody 和HttpMethodConverter 实现, 可以将传入的
+HTTP数据转化为传入控制器处理方法的Java对象
+
+RestTemplate简化了客户端对REST资源的使用
+
+@RequestMapping(value = "/{id}", method = RequestMethod.PUT)
+@ResponseStatus(HttpStatus.NO_CONTENT)
+public void putSpittle(@PathVariable("id") long id, @Valid Spitter spittle)P
+	spittleService.save(spittle);
+
+
+@ResponseStatus定义了HTTP状态, 这个状态设置在发往客户端的响应中. HttpStatus.NO_CONTENT说明
+响应状态码要设置为204, 表示请求被成功处理, 但是不返回任何信息
+
+Http.Status.CREATE 201表示资源被成功创建
+
+使用POST创建新的Spittle
+@RequestMapping(method = RequestMethod.POST) 
+
+@ResponseStatus(HttpStatus>CREATE)
+public @ResponseBody Spittle createSpittle(@Valid Spittle spittle, BindingResult result,
+	HttpServerletResponse response) throws BindingException{
+	if(result.hasErrors()){
+		throw new BindingException();
+	}
+	spitterService.saveSpittle(spittle);
+	response.setHeader("Location", "/spittles/" + spittle.getId());     <----- 设置资源位置 
+	return spittle                                 <----- 返回Spittle资源
+	}
+
+
+使用HTTP信息转换器
+
+@RequestMapping(value = "/{username}", method = RequestMethod.GET, headers = {"Accept=text/xml, application/json"})
+public @ResponseBody
+Spitter getSpitter(@PathVariable String username){
+	return spitterService,getSpitter(username);
+}
+
+资源的格式需要满足请求中Accept头部信息的要求, 如果请求中没有包含Accept头部信息的话, 那就假设客户端能够接受任意的表述形式
+headers 表明这个方法只接受Accpet头部信息为 text/xml / application.json的表述形式
+
+Spring提供了多个HTTP信息转换器， 用于实现资源表述与各种Java类型之间的相互转化
+
+
+信息转换器								                           描述
+AtomFeedHttpMessageConverter 	         Rome Feed对象和Atom Feed(媒体类型的application/atom+xml)之间的相互转换
+BufferedImageHttpMessageConverter        BufferedImages与图片2进制数据之间相互转换
+ByteArrayHttpMessageConverter            读取/写入字节数组, 从所有媒体类型(*/*)中读取, 并以application/octet-stream格式写入
+FormHttpMessageConverter		         将application/x-www-form-urlencoded内容
+								         读入到MultiValueMap<String, String>中, 也会将MutiValueMap<String, String> 写入到
+								         application/x-www-form-urlencoded
+								         或者将MutiValueMap<Object, Object> 写入到mutipart/form-data中
+Jaxb2RoorElementHttpMessageConverter  	 在XML(test/xml 或application/xml)和使用JAXB2注解的对象间互相读取和写入 
+MappingJacksonHttpMessageConverter       在JSON和类型化对象或非类型化的Hashmap间互相读取和写入 
+MarshallingHttpMessageConverter          注入使用marshaller和unmarshaller来读入和写入XML 
+ResourceHttpMessageConverter 			 读取或写入Resource 默认注册
+RssChannelHttpMessageConverter			 在RSS feed和Rome Channel对象间互相读取或者写入
+SourceHttpMessageConverter				 在XML和javax.xml.transform.Source对象间互相读取和写入		
+StringHttpMessageConverter				 将所有媒体类型(*/*)读取为String, 将String写入为text/plain
+XmlAwareFormHttpMessageConverter		 FormHttpMessageConverter的扩展, 使用SourceHttpMessageConverter支持基于XML的部分
+
+在请求体中接受资源状态
+
+@ResponseBody 注解能够将发送给客户端的数据进行转换一样, @RequestBody也能对客户端发过来的对象做相同的事情
+
+假设客户端提交了一个PUT请求, 在请求体中包含了JSON格式表述的Spitter对象数据, 为了以Spitter对象来接收信息,
+只需在处理的方法Spitter参数上使用@RequestBody注解
+
+@RequestMapping(value = "/{username}", method = RequestMethod.PUT,
+ 			headers = "Content-Type=application/json")
+@ReponseStatus(HttpStatus.NO_CONENT)
+public void updateSpitter(@PathVariable String username, @RequestBody Spitter spitter){
+	spitterService.saveSpitter(spitter);
+}
+
+编写Rest客户端
