@@ -1478,3 +1478,287 @@ public void updateSpitter(@PathVariable String username, @RequestBody Spitter sp
 }
 
 编写Rest客户端
+
+并且所编写的代码都是样板式的, 例如: 
+public Spittle[] retrieveSpittlesForSpitter(String username){
+	try{
+		HttpClient httpClient = new DefaultHttpClient();                      <---- 创建HttpClient
+		String spittleUrl = "http://..."                                      <---- 组件url
+		HttpGet getRequest = new HttpGet(spittleUrl); 						  <---- 创建对Url的请求
+		getRequest.setHeader(new BasicHeader("Accept", "application/json"));  
+		HttpEntity entity = response.getEntity();                             <---- 解析结果
+		ObjectMapper mapper = new ObjectMapper();                          
+		return mapper.readValue(entity.getContent(), Spittle[].class);        
+	}catch(IOException e){
+		throw new SpitterClientException("Unable to retrieve Spittle", e); 
+	}
+}
+
+最好的方法是使用RestTemplate封装代码并令参数可变
+
+了解RestTemplate的操作
+
+RestTemplate所提供的11个独立方法
+
+方法                                描述
+delete()                       	在特定的URL上对资源执行HTTP DELETE操作  
+exchange()						在URL上执行特定的HTTP方法, 包含返回对象的ResponseEntity, 这个对象是从响应体中映射到的
+execute() 						在URL上执行特定的HTTP方法, 返回一个响应体映射得到的对象
+getForEntity()					发送一个HTTP GET请求, 返回的ResponseEntity包含了响应体所映射成的对象
+getForObject()					GET资源, 返回的请求体将映射为一个对象
+headForHeaders()				发送HTTP HEAD请求, 返回包含特定资源URL的HTTP头
+optionsForAllow() 				发送HTTP OPTION请求, 返回对特定资源URL的Allow头信息
+postForEntity()					POST数据, 返回包含一个对象的ResponseEntity, 这个对象是从响应体中映射得到的
+postForLocation() 				POST数据, 返回新资源的URL
+postForObject() 				POST数据, 返回请求体将匹配为一个对象
+put()							PUT资源到特定的URL
+
+3种方法进行了重载
+一个使用java.net.URI作为URL格式, 不支持参数化URL
+一个使用String作为URL格式, 并使用Map指明URL参数
+一个使用String作为URL格式, 并使用可变参数列表指明URL参数
+
+GET资源
+
+3个getForObject()方法签名
+
+<T> T getForObject(URI url, Class<T> responseType) throws RestClientException;
+
+<T> T getForObject(String url, Class<T> responseType, Object... uriVariable) throws RestClientException;
+
+<T> T getForObject(String url, Class<T> responseType, Map<String, ?> uriVariables) RestClientException;
+
+只返回所请求类型的对象
+
+类似的
+
+<T> ResponseEntity getForEntity(URI url, Class<T> responseType) throws RestClientException;
+
+<T> ResponseEntity getForEntity(String url, Class<T> responseType, Object... uriVariable) throws RestClientException;
+
+<T> ResponseEntity getForEntity(String url, Class<T> responseType, Map<String, ?> uriVariables) RestClientException;
+
+返回请求的对象以及响应相关的额外信息
+
+getForObject() 方法是检索资源合适的选择, 你请求一个资源并以你所选择的Java类型接收该资源.
+
+public Spittle[] retrieveSpittlesForSpitter(String username){
+	return new RestTemplate().getForObject("http://localhost:8080/Spitter/spitter/{spitter}/spittles",
+	 Spittle.class, username);
+}
+
+没有使用字符串连接来构建URL, 而是使用RestTemplate可以接受参数化URL这一功能. URL中的{spitter}占位符最终将会用方法的username
+参数来填充。getForObject()方法最后一个是参数大小可变的参数列表, 每个参数都会按顺序插入到URL的占位符中.
+
+替代方式是将username参数放到Map中, 并以spitter作为key, 然后将这个map作为最后一个参数传递给getForObject()
+public Spittle[] retrieveSpittlesForSpitter(String username){
+	Map<String, String> urlVariables= new HashMap<String, String>(); 
+	urlVariables.put("spitter", username);
+	return new RestTemplate().getForObject(
+	"http://localhost:8080/Spitter/spitters/{spitter}/spittles", Spittle[].class, urlVariables
+	);
+}
+
+抽取响应的元数据
+
+getForEntity() 在ResponseEntity中返回相同的对象. ResponseEntity还带有关于响应的额外信息，如HTTP状态码和响应头
+ResponseEntity的一个用途是获取响应头的一个值, 想知道资源的最后修改时间, 假设服务端在Last-Modified头中提供了这个信息
+, 可以这样使用getHeaders()方法
+
+Date lastModified = new Date(response.getHeaders().getLastModified());
+
+getHeaders()方法还包含以下的方法获取头信息
+public List<MediaType> getAccept(){...}
+public List<Charset> getAcceptCharset{...}
+public Set<HttpMethod> getAllow(){...}
+public String getCacheControl(){...}
+public long getContentLength(){...}
+public MediaType getContentType(){...}
+public long getDate(){...}
+public String getETag() {...}
+public long getExpires() {...}
+public long getIfNotModifiedSince() {...}
+public List<String> getIfNoneMatch() {...}
+public long getLastModified() {...}
+public URI getLocation() {...}
+public String getPragma() {...}
+
+更通用的HTTP头信息的访问, HttpHeaders提供了get()方法和getFirst()方法 get()将会返回一个String值的列表
+getFirst()只返回第一个头信息的值
+
+PUT资源 
+
+3个put资源方法签名
+
+void put(URI url, Class<T> responseType) throws RestClientException;
+
+void put(String url, Class<T> responseType, Object... uriVariable) throws RestClientException;
+
+void put(String url, Class<T> responseType, Map<String, ?> uriVariables) throws RestClientException;
+
+以下如何使用基于URL版本的put() 来更新服务器上的Spittle资源: 
+
+public void updateSpittle(Spittle spittle) throws SpitterException{
+	try{
+		String url = "http://localhost:8080/Spitter/Spitter/spitters/" + spittle.getId();
+		new RestTemplate().put(new URI(url), spittle);
+	}catch (URISyntaxException e){
+		throw new SpitterUpdateException("Unable to update spittle", e);
+	}
+}
+
+public void updateSpittle(Spittle spittle) throws SpitterException{
+	restTemplate.put("http://localhost:8080/Spitter/spitter/{id}", spittle, spittle.getId());
+}
+
+DELETE资源
+
+类似put
+
+POST资源
+
+3种 postForObject()
+
+3种 postForEntity()
+
+类似get...()
+
+在POST请求后获取资源位置
+对于要同时发送资源和响应头来说 postForEntity()方法是很便利的, 但通常不需要将资源发回来, 如果只需要的是
+Location头信息的值, 那么使用RestTemplate的postForLocation()方法会更简单 
+
+响应是新创建资源的位置
+
+URI postForLocation(String url, Object request, Object... uriVariables) throws RestClientException;
+
+URI postForLocation(String url, Object request, Map<String, ?> uriVariable) throws RestClientException;
+
+URI postForLocation(URI url, Object request) throws RestClientException;
+
+交换资源 
+
+在发送服务端的请求中设置头信息的话, 使用exchange()
+
+<T> ResponseEntity exchange(URI url, HttpMethod method, HttpEntity<?> requestEnity, Class<T> responseType) throws RestClientException;
+
+<T> ResponseEntity exchange(String url, HttpMethod method, Class<T> responseType, Object... uriVariable) throws RestClientException;
+
+<T> ResponseEntity exchange(String url, HttpMethod method, Class<T> responseType, 
+Map<String, ?> uriVariables) RestClientException;
+
+不指明头信息的使用
+
+ResponseEntity<Spitter> response = rest.exchange("http://localhost:8080/Spitter/spitters{spitter}",
+		HttpMethod.GET, null, Spitter.class, spitterId);
+Spitter spitter = response.getBody();
+
+指明头信息的使用
+
+先创建一个LinkedMutiValueMap 并添加值为application/json的Accept头信息
+MutiValueMap<String, String> headers = new LinkedMutiValueMap<String, String>();
+headers.add("Accept", "application/json");
+HttpEntity<Object> requestEntity = new HttpEntity<>(headers);
+构造一个HttpEntity, 将LinkedMutiValueMap传入
+传入HttpEntity调用exchange()
+ResponseEntity<Spitter> response = rest.exchange("http://localhost:8080/Spitter/spitters/{Spitter}", 
+		HttpMethod.GET, requestEntity, Spitter.class, spitterId);
+Spitter spitter = response.getBody();
+
+11.5 提交Restful表单
+
+POST伪装
+通过使用HiddenHttpMethodFilter来进行请求转换
+
+Spring消息 
+
+JMS 简介
+像RMI和Hessian/Burlap这样的远程调用是同步的, JMS提供了应用之间的异步通讯机制.
+
+JMS主要两个概念 
+message broker 消息代理 
+destination 目的地
+
+点对点消息模型
+
+发送者    ------->     队列  -------> 接收者
+
+消息队列对消息发送者和接受者进行了解耦, 虽然队列可以有多个接收者, 但是每条消息只能被一个接收者取走
+
+尽管消息队列中的每条消息只投递给一个接收者, 但是并不意味着只能使用一个接收者从队列获取消息, 可以使用多
+个接收者来处理队列中的消息
+
+发布-订阅者模型 
+						  订阅者
+					    /	
+ 					   /	
+					  /	
+发送者  ------> 主题  ---- 订阅者
+					  \
+					   \
+					    \ 订阅者
+
+与队列类似, 主题可以将消息发送者与消息接收者进行解耦, 与队列不同的是, 主题消息可以发送给多个主题订阅者
+
+同步机制的缺点
+1. 等待
+2. 客户端通过服务接口与远程服务相耦合
+3. 客户端与远程服务位置耦合
+4. 客户端与远程服务可用性耦合
+
+JMS的优点
+1. 无需等待
+2. 面向消息和解耦 
+3. 位置独立
+4. 确保投递  	
+
+Spring中搭建消息代理
+ActiveMQ 现有以及不推荐使用 推荐使用RabbitMQ RocketMQ或者kafka
+
+JmsTemplate Spring对JMS的核心支持部分
+
+JmsTemplate跟JdbcTemplate一样, 用于处理复杂失控的连接代码
+
+使用JMS模板
+
+JmsTemplate可以创建连接, 获得会话, 以及发送和接受消息, 并可以处理JMSException异常
+Spring的JmsTemplate捕获标准的JMSException异常, 再以Spring自己的非检查型异常JmsException
+子类重新抛出
+
+Spring(org.springframwork.jms.*)      							标准的JMS(javax.jms.*)
+DestinationResolutionException					Spring特有的--当Spring无法解析目的地名称时弹出
+IllegalStateException							IllegalStateException
+InvalidClientIDException						InvalidClientIDException
+InvalidSelectorException						InvalidSelectorException
+JmsSecurityException							JmsSecurityException
+ListenerExecutionFailedException				Spring特有的--当监听器方法执行失败时抛出
+MessageConversionException						Spring特有的--当消息转换失败时抛出
+MessageEOFException								MessageEOFException
+MessageFormatException							MessageFormatException
+MessageNotReadableException						MessageNotReadableException
+MessageNotWriteableException					MessageNotWriteableException
+ResourcesAllocationException					ResourcesAllocationException
+SynchedLocalTransactionFailedException			Spring特有的--当同步的本地事务不能完成时抛出
+TransactionInProgressException					TransactionInProgressException
+TransactionRollBackException					TransactionRollBackException
+UncategorziedJmsException						Spring特有的--当没有其他异常适用时候抛出
+
+都是检查型异常 必须要捕获
+
+
+使用JmsTemplate发送一个Spittle
+
+public class AlertServiceImpl implements AlertService{
+@Autowired
+JmsTemplate jmsTemplate;
+
+	public void sendSpittleAlert(final Spittle spittle){
+		jmsTemplate.send{                                                          <---- 发送消息
+			"spittle.alert.queue", new MessageCreator(){						   <---- 指定目的地
+				public Message createMessage(Session session) throws JMSException{ 
+					return session.createObjectMessage(spittle);				<---- 创建消息
+				}
+			}
+		}
+	}
+}
+
