@@ -1748,8 +1748,8 @@ UncategorziedJmsException						Spring特有的--当没有其他异常适用时�
 使用JmsTemplate发送一个Spittle
 
 public class AlertServiceImpl implements AlertService{
-@Autowired
-JmsTemplate jmsTemplate;
+	@Autowired
+	JmsTemplate jmsTemplate;													<---- 注入JMS模板
 
 	public void sendSpittleAlert(final Spittle spittle){
 		jmsTemplate.send{                                                          <---- 发送消息
@@ -1761,4 +1761,300 @@ JmsTemplate jmsTemplate;
 		}
 	}
 }
+
+			send()
+消息发送者 ----------> JmsTemplate --------> 队列/主题
+
+JmsTemplate 代表发送者来负责处理发送消息的复杂过程
+
+使用 MessageCreator来构造消息, 在MessageCreator的 createMessage()方法中, 通过session创建了一个对象消息
+传入一个Spittle对象, 返回一个对象消息
+
+可以设置默认目的地, 减少参数
+
+Jms接收消息
+
+public Spittle getAlert(){
+	try{
+		ObjectMessage receivedMessage = (ObjectMessage) jmsTemplate.receive();		<---- 接收消息
+		return (Spittle) receivedMessage.getObject();                               <---- 获得对象
+	}catch(JMSException jmsExceptin){
+		throw JmsUtils.convertJmsAccessException();									<---- 抛出转换后的异常
+	}
+}
+
+当调用JmsTemplate的receive() 方法时, JmsTemplate会尝试从消息代理中获取一个消息, 如果没有可用消息, receive()
+方法会一直等待, 直到获得消息为止.
+
+									receive()
+队列/主题 -----------> JmsTemplate <----------- 消息接收者
+
+使用JmsTemplate从主题或队列中接收消息只需要简单点地调用receive()方法. JmsTemplate会处理其余所有事项
+
+使用JmsTemplate最大缺点在于receive() 方法是同步的, 因此receive()方法会一直阻塞
+
+创建消息驱动的POJO
+
+Spring使用消息驱动POJO来支持异步接收消息的
+
+
+EJB2引入消息驱动Bean, MDB 是可以异步处理消息的, 唯一缺点是必须实现javax.ejb.MessageDrivenBean和生命周期
+
+@MessageDriven(mappedName = "jms/spittle.alert.queue")
+public class SpittleAlertHandler implements MessageListener{
+	@Resource
+	private MessageDrivenContext mdc; 
+
+	public void onMessage(Message message){
+		...
+	}
+}
+
+EJB3的规范的MDB实现该需求并不会太难, 但事实上, SpittleAlertHandler的EJB3实现太依赖于EJB的消息驱动API, 
+并不是我们所希望的POJO
+
+Spring提供了能以POJO方式处理消息的能力, 这些消息来自JMS队列或主题中. 
+
+public class SpittleAlertHandler{
+	public void processSpittle(Spittle spittle){
+		...
+	}
+}
+
+队列/主题  ----------> 消息监听器容器 --------> 消息监听器
+
+消息监听器容器监听队列和主题, 当消息到达时, 消息将转给消息监听器
+
+基于消息的RPC 
+
+使用JMS作为传输通道来进行远程调用,通过队列和主题在应用程序间发送消息
+
+Spring 自身提供了2种RPC
+
+Spring 自身提供JmsInvokerServiceExporter, 可以把Bean导出为基于消息的服务; 为客户端提供了
+JmsInvokerProxyFactoryBean 来使用这些服务
+
+Lingo通过它的JmsServiceExporter和JmsProxyFactoryBean提供了类似的基于消息的远程服务调用
+
+Spring提供多种方式将Bean导出为远程服务
+
+RmiServiceExporter将Bean导出作为JRMP的RMI服务
+
+使用Hessian/Burlap的Hessian/BurlapExporter基于HTTP的服务
+
+使用HttpInvokerServiceExporter创建基于HTTP的HTTP invoker服务
+
+JmsInvokerServiceExporter用于导出基于JMS的服务
+
+一个简单的AlertService接口
+
+public interface AlertService{
+	void sendSpittleAlert(Spittle spittle);
+}
+
+AlertService使用 @Componenet来进行标注, 它会在Spring上下文自动发现并注册为Spring应用上下文的ID为alertService的bean
+
+在配置JmsInvokerServiceExporter时, 我们将引用这个bean
+
+基于JMS的提醒服务已经配置好了 等待队列名为spittle.queue的RPC消息到达
+
+访问基于JMS的服务
+
+JmsInvokerProxyFactoryBean用来访问服务, 与代理RMI服务或者基于HTTp服务最大区别在于, JmsInvokerProxyFactoryBean代理
+通过JmsInvokerServiceExporter所导出的JMS服务
+
+为了访问提醒服务, 我们需要配置JmsInvokerProxyFactoryBean
+<bean> ... </bean> 
+
+connectionFactory 和queryName 指定了RPC消息如何被投递, 
+serviceInterface指定了该代理应通过AlertService接口发布.
+
+12.5.2 使用Lingo实现异步RPC 
+
+Lingo充分利用了JMS异步特性实现异步调用服务, Lingo并不是Spring框架的一部分, 它是基于Spring远程机制而构建的独立项目
+, 提供了基于JMS的服务导出器和客户端代理.
+
+导出异步服务
+
+使用Lingo的JmsServiceExporter导出异步服务
+
+JmsServiceExporter和JmsInvokerServiceExporter通过Bean进行配置
+
+service-ref和serviceInterface属性与JmsInvokerService对应配置完全相同
+
+因为JmsService在Spring监听器容器中不能被用作消息监听器, 所以我们必须通过ConnectionFactory属性配置JMS的连接工厂
+,通过destination属性配置消息目的地, 这样JmsServerExporter才知道如何发送消息
+
+destination-ref属性是javax.jms.Destination对象, 所以需要装配一个目的地Bean引用. 下面的alertServiceQueue Bean
+将确保JMS RPC消息通过名为spittle.alert.queue队列进行传输
+
+代理异步服务
+
+Lingo的JmsProxyFactoryBean 可以把没有返回值的方法作为异步方法. 
+
+配置基于Lingo的提醒服务的客户端
+
+<bean> ... <bean> 
+
+connectionFactory, destination-ref 和serviceInterface 属性与前一个示例的含义是相同的. metadataStrategy的属性是新的
+我们使用SimpleMetadataStrategy内部Bean声明来配置该属性
+
+13章 JMX管理Spring Bean
+
+JMX Java 管理拓展
+
+用的少省略
+
+14章 其他Spring技巧 
+
+14.1外部化配置 
+
+Spring自带几个选项, 可以借助他们将Spring配置细节信息外部化到属性文件中, 这样就能在部署的应用之外进行管理
+
+属性占位符配置 Property placeholder configurer 会将占位符内部变量替换为外部属性文件的值
+
+属性重写Property override 会将Bean属性的值用外部属性文件值进行重写
+
+14.1.1
+替换属性占位符
+配置@Value注解的属性
+
+如果一个属性需要使用JDBC URL  
+@Value("${jdbc.url}")
+String databaseUrl;
+
+属性文件自身使用占位符变量 
+例如使用占位符变量将 jdbc.url属性拆分为多个部分 
+
+jdbc.protocol=hsqldb:hsql
+db.server=localhost
+db.name=spitter
+jdbc.url=jdbc:${jdbc.protocal}://${db.server}/${db.name} 
+
+装配默认值
+如果占位符变量无法在db.properties文件中找到, 那么 将使用defaultConfiguration Bean中的默认值
+
+14.2装配JNDI对象 
+
+Java 命名和目录接口 (java naming and directory interface)
+
+通过名字查找对象的API
+
+传统的JNDI API 需要复杂的代码
+
+通过依赖注入解决, 使代码能接收任何地方的数据源, 而不是从JNDI中查找数据源. 你的代码应该有一个用于进行
+注入的DataSource属性, 这个类不需要关心对象从哪里来
+
+装配JNDI对象
+
+14.3.2 构建邮件
+
+使用Spring的MailSender发送邮件 
+
+public void sendSimpleSpittleEmail(String to, Spittle spittle){
+	SimpleMailMessage message = new SimpleMailMessage();    <------ 构造信息
+	String spitterName = spittle.getSpitter().getFullName();   
+	message.setFrom("noreply@spitter.com")                  <----- 邮件地址
+	message.setTo(to);
+	message.setSubject("New spittle from"+spittleName);
+	message.setText(spitterName+" says: "+ spittle.getText()); <----- 设置信息文本   
+	mailSender.send(message);  	  							 <----- 发送邮件 
+}
+
+
+添加附件
+
+创建mutipart类型的信息 -- 邮件将由多个部分组成, 一部分邮件体, 其他部分是附件
+
+对于发送附件来说, SimpleEmailMessage 过于简单, 发送Mutipart的邮件, 使用MIME
+
+MimeMessageHelper简化了发送带有附件的邮件
+
+public void sendSpittleEmailWithAttachment(String to, Spittle spittle) throws MessagingException{
+	MimeMessage message = mailSender.createMimeMessage();             <---- 邮件发送器对象
+	MimeMessageHelper helper = new MimeMessageHelper(message, true);  <---- 构造信息的 helper
+	String spitterName = spittle.getSpitter().getFullName();  		
+	helper.setFrom("noreply@spitter.com");
+	helper.setTo(to);
+	helper.setSubject("New spittle from "+ spitterName);
+	helper.setText(spitterName + " say: "+ spitter.getText());
+	FileSystemResources couponImage = new FileSystemResource("*/collateral/coupon.png"); 
+	helper.addAttachment("Coupon.png, couponImage");                  <---- 添加附件
+	mailSender.send(message);
+}
+
+发送带有丰富文本内容的邮件 
+
+将信息的文本设置为HTML, 要做到这一点只需要将HTML字符串传递给helper的setText()方法, 并将第二个参数设为true.
+
+添加嵌入式图片不用addAttachment()方法, 使用addInline() 方法 
+
+ClassPathResource image = new ClassPathResource("spittle_logo_50.png");
+helper.addInline("spitterLogo", image);
+
+addInline 第一个参数表面内联图片的标识符, 与<img> src属性相同
+第二个参数是图片资源引用, ClassPathResource的类路径获取图片
+
+使用Apache Velocity配置模板引擎
+Apache Velocity VS freemarker 
+ 简单好学 			功能强大
+
+ Spring提供了一个名为VelocityEngineFactoryBean的工厂Bean, 它能够在Spring应用上下文中很便利的生成VelocityEngine
+
+ 依赖注入Velocity引擎
+ @Autowried
+ VelocityEngine velocityEngine;
+
+ Spring自带VelocityEngineUtils来简化将Velocity模板与模型数据合并成String的工作
+ Map<String, String> model = new HashMap<>();
+ model.put("spitterName", spitterName);
+ model.put("spitterText", spittle.getText());
+ String emailText = VelocityEngineUtils.mergeTemplateIntoString(
+ 	velocityEngine, "emailTemplate.vm", model); 
+
+
+14.4调度和后台任务
+
+两种后台任务可供选择
+1. 调度任务
+2. 异步方法
+
+
+14.4.1 声明调度方法 
+@Scheduled(fixedRate = 86400000) 
+public void acrhievOldSpittle(){
+	...
+}
+
+fixRate 这次开始和下次开始时间的间隔
+fixDelay 这次完成和下次开始之间的间隔
+cron = Corn表达式 指定何时进行调用
+
+6个空格分隔的元素构成
+秒(0-59) 分钟(0-59) 小时(0-23) 日 (1-31) 月 (1-12) 星期(1-7) 年 (1970)
+, 表示多个 ? 表示不设定  1-30可以设置范围 * 通配符
+
+14.4.2 声明异步方法
+
+实际性能 actual performance指的是独立测量完成一项操作需要多长时间
+感知性能 perceived performance指的是用户感受到变化所需要的时间
+
+@Async将其放到Bean方法上, 这个方法就会成为异步的了
+
+Spring的异步方法是建立在Java的并发API之上的, 它可以返回java.util.concurrent.Future对象
+这个接口代表了一个值的容器, 而值能在方法返回的某个时间内得到, 但并不一定是方法返回的时间点
+
+Spring还自带一个Future便利实现, 名为AsyncResult, 更容易处理未来值
+
+假设一个异步方法要执行复杂和长时间运算, 希望在后台看到执行方法, 还想再方法执行完成时马上看到结果
+@Async
+public Future<Long> performSomeReallyHairyMath(long int){
+	...
+	return new AsyncResult<Long>(result); 
+}
+
+一旦得到结果, 调用者可以用Future() 对象的get()方法得到它, 在此之前, 调用者可以使用isDone() 和
+isCancelled() 来判断结果状态
+
+本书完
 
