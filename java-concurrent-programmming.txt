@@ -1,0 +1,214 @@
+Java并发编程实战 
+
+1.2 线程的优势
+1. 有效的降低程序的开发和维护成本, 提升复杂应用程序的性能
+2. 发挥多处理器强大的能力
+3. 建模的简单性
+4. 异步事件的简化处理
+5. 响应更灵敏的用户界面
+
+1.3 线程的风险
+
+1.3.1 安全性问题
+
+@NotThreadSafe
+public class UnsafeSequence{
+	private int value;
+
+	//返回一个唯一的数值
+	public int getNext(){
+		return value++;
+	}
+}
+
+如果执行时机不对, 那么两个线程在调用getNext()时会得到相同的值
+
+@NotThreadSafe 标明不支持并发
+@ThreadSafe 标明支持并发
+@Immutable 标明不可被修改
+
+使用synchronized同步方法 
+
+@ThreadSafe
+public class UnsafeSequence{
+	@GuardedBy("this") private int value;
+
+	//返回一个唯一的数值
+	public synchronzied int getNext(){
+		return value++;
+	}
+}
+
+
+1.3.2 活跃性问题
+当某个操作无法执行下去时, 就会发生活跃性问题, 在串行程序中, 活跃性问题的形式之一就是无意中造成的无限循环, 
+从而使循环之后的代码无法得到执行
+
+包括 死锁, 饥饿, 活锁
+
+1.3.3 性能问题
+响应不灵敏, 吞吐率过低, 资源消耗过高, 可伸缩性较低. 
+
+框架通过在框架线程中调用应用程序代码将并发性引入到程序中, 在代码中将不可避免地访问应用程序状态, 因此所有访问
+这些状态的代码都必须是线程安全的
+
+下面的模块都将在应用程序之外的线程中调用应用程序的代码:
+Timer: 确保TimerTask 访问的对象本身是线程安全的, 从而就能把线程安全性封装在共享对象内部. 
+Servlet 和 JavaServer Page(JSP): Servlet和 JSP 以及在ServletContext和HttpSession 等容器中保存的Servlet
+过滤器和对象, 都必须是线程安全的.
+RMI: 远程对象必须注意两个线程的安全性问题, 正确的协同在多个对象中共享的状态, 以及对远程对象本身状态的访问. 
+与Servlet相同, RMI对象应该做好被多个线程同时调用的准备，并且必须确保他们自身的线程安全性
+
+第二章
+
+线程安全性 
+
+当多个线程访问某一个变量, 并且有一个线程执行写入操作时, 必须采用同步机制来协同这些线程对变量的访问. 
+
+如果当多个线程访问同一可变状态变量时候, 没有使用合适的同步, 那么程序就会出现错误, 三种方式修复这个问题:
+不在程线程间共享变量
+将状态变量修改为不可变变量
+在访问状态变量时同步
+
+线程安全的定义: 
+当多个线程访问某个类时, 不管运行环境采用何种调度方式或者这些线程将如何交替执行, 并且在主调代码中不需要
+任何额外的同步或协同, 这个类都能表现出正确的行为, 那么就称这个类为线程安全的 
+
+在线程安全类中封装了必要的同步机制, 因此客户端无须进一步采取同步措施
+
+@ThreadSafe 
+public class StatelessFactorizer implements Servlet{
+	public void service(ServletRequest req, ServletResponse resp){
+		BigInteger i = extractFromRequest(req);
+		BigInteger[] factors = factor(i);
+		encodeIntoResponse(resp, factors);
+	}
+}
+
+无状态的对象一定是线程安全的
+
+大多数的Servlet都是无状态的, 从而极大地降低了在实现Servlet线程安全性时的复杂性, 只有当Servlet在处理请求时需要保存一些信息
+线程安全性才会成为一个问题
+
+竞态条件Race condition
+当某个计算的正确性取决于多个线程交替的执行时序时候, 那么就会发生竞态条件
+
+先检查后执行 check-then-act操作就会产生一种竞态
+
+@NotThreadSafe
+public class LazyInitRace{
+	private ExpensiveObject instance = null;
+
+	public ExpensiveObject getInstance(){
+		if(instance == null){
+			instance = new ExpensiveObject();
+		}
+		return instance;
+	}
+}
+
+复合操作
+
+假定有两个操作A和B, 如果从执行A的线程来看, 当另一个线程执行B时, 要么将B全部执行完, 要么完全不执行B, 那么A和B对彼此来说是原子的,
+原子操作是指, 对于访问同一个状态的所有操作, 包括该操作本身来说, 这个操作是一个以原子方式执行的操作.
+
+使用AtomicLong类型的变量来统计已处理的请求的数量
+
+@ThreadSafe
+public class CountingFactorizer implements Servlet{
+	private final AtomicLong count = new AtomicLong(0);
+
+	public long getCount{rerturn count.get();}
+
+	public void service(ServletRequest req, ServletResponse resp){
+		BigInteger i = extractFromRequest(req);
+		BigInteger[] factors = factor(i);
+		count.incrementAndGet();
+		encodeIntoResponse(resp, factors);
+	}
+}
+
+尽可能使用现有安全对象来管理类的状态, 与非线程安全的对象相比, 判断线程安全对象的可能状态及其状态转换情况要更为容易,
+从而也更容易维护和验证线程安全性
+
+要保持状态的一致性, 就需要在单个原子操作中更新所有相关的状态变量
+
+内置锁
+
+Java提供了一种内置锁机制来支持原子性, 同步代码块synchronized block
+
+一个作为锁的对象引用, 一个作为由这个锁保护的代码块
+
+synchrozied(lock){
+	...
+}
+
+重入 
+
+内置锁是可以重入的, 因此如果某个线程试图获得一个已经由它自己持有的锁, 那么这个请求就会成功
+
+对于可能被多个线程同时访问的可变状态变量, 在访问它时都需要持有同一个锁, 在这种情况下, 我们称状态变量是由这个锁保护的
+
+对于每个包含变量的不变性条件, 其中涉及的所有变量都要由同一个锁来保护
+
+在执行时间较长的计算或者可能无法快速完成的操作时, 例如网络i/o, 一定不要持有锁
+
+第三章 对象的共享
+
+重排序: reordering  在没有同步的情况下, 编译器, 处理器以及运行时都可能对操作的执行顺序进行一些意想不到的调整.
+
+加锁的含义不仅仅局限于互斥行为, 还包括内存可见性, 为了确保所有线程都能看到共享变量的最新值, 所有执行读操作或者写操作的线程
+都必须在同一个锁上同步
+
+volatile
+
+把变量声明为volatile类型后, 会注意到这个变量是共享的, 因此不会将该变量上的操作与其他内存操作一起重排序
+
+一种比sychronized更轻量的同步锁
+
+仅当volatile变量能简化代码的实现以及对同步策略的验证时, 才应该使用它们. 如果在验证正确性时需要对可见性进行复杂的判断， 
+那么就不要使用volatile变量. volatile变量的正确使用方式包括: 确保它们自身状态的可见性, 确保它们所引用对象的状态可见性,
+以及标识一些重要程序生命周期事件的发生
+
+加锁机制既可以确保可见性又可以确保原子性, 而volatile变量只能确保可见性
+
+满足以下条件时候才能使用volatile变量
+1. 对变量的写入操作不依赖变量的当前值, 或者只有单个线程更新变量的值
+2. 该变量不会与其他状态变量一起加入不变性条件中
+3. 访问变量不需要加锁
+
+发布与逸出
+发布 public: 使对象能够在当前作用域之外的代码中使用
+逸出 escape: 当某个不该被发布的对象被发布时, 这种情况被称之为逸出
+
+不要在构造过程中使this引用逸出
+
+在构造过程中使this引用逸出的一个常见错误是, 在构造函数中启动一个线程. 当对象在其构造函数中创建一个线程时, this引用都会被
+新创建的线程共享
+
+使用工厂方法来防止this引用在构造过程中逸出
+
+public class SafeListener{
+	private final EventListener listener;
+	private SafeListener(){
+		listener = new EventListener(){
+			public void onEvent(Event e){
+				doSomething(e);
+			}
+		}
+	}
+
+	public static SafeListener newInstance(EventSource source){
+		SafeListener safe = new SafeListener();
+		source.registerListener(safe.listener);
+		return safe;
+	}
+}
+
+Ad-hoc线程封闭
+
+
+
+
+
+
