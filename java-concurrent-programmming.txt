@@ -401,6 +401,310 @@ public Map<String, Date> lastLogin = Collections.synchronizedMap<new HashMap<Str
 线程安全共享: 线程安全的对象在其内部实现同步, 因此多个线程可以通过对象的公有接口来进行访问而不需要进一步的同步
 保护对象: 被保护的对象只能通过持有特定的锁来访问. 保护对象包括封装在其他线程安全对象中的对象, 以及已发布的并且由某个特定锁保护的对象
 
+第四章
+对象的组合
+
+4.1 设计线程安全的类
+
+三个基本要素:
+1. 找出构成对象状态的所有变量
+2. 找出约束状态变量的不变性条件
+3. 建立对象状态的并发访问管理策略
+
+同步策略(Synchronization policy)定义了如何在不违背对象不变条件或后验条件的情况下对其状态的访问操作进行协同
+
+如果不了解对象的不变性条件与后验条件, 那么就不能确保线程安全性, 要满足在状态变量的有效值或状态转换上的各种约束条件
+, 就需要借助原子性和封装性
+
+4.2实例封闭
+
+如果对象不是线程安全的, 就需要确保该对象只能由单个线程访问或者通过一个锁来保护该对象的所有访问
+
+将数据封装在对象内部, 可以将数据的访问限制在对象的方法上, 从而更容易确保线程在访问数据时总能持有正确的锁
+
+PersonSet说明了如何通过封闭与加锁等机制使一个类成为线程安全的
+
+通过封闭机制来确保线程安全
+@ThreadSafe
+public class PersonSet{
+	@guardedBy("this")
+	private final Set<Person> mySet = new HashSet<>();               <------ private final 限制了mySet不会逸出
+
+	public synchronized void addPerson(Person p){					 <------ 状态由内置锁保护
+		mySet.add(p);
+	}
+
+	public synchronized boolean containsPerson(Person p){			 <------ 状态由内置锁保护
+		return mySet.contains(p);
+	}
+}
 
 
+封闭机制更易于构造线程安全的类, 因为当封闭类的状态时, 在分析类的线程安全性时就无需检查整个程序
 
+4.2.1 Java监视器模式
+
+通过一个私有锁来保护状态
+
+public class privateLock{
+	private final Object myLock = new Object();
+	@GuardedBy("mylock") Widget widget;
+
+	void someMethod(){
+		synchronized(mylock){
+			//访问或修改widget状态
+		}
+	}
+}
+
+使用私有的锁对象而不是对象的内置锁, 有许多优点, 私有的锁对象可以将锁封装起来, 使客户代码无法得到锁, 但客户代码可以通过
+公有方法来访问锁, 以便参与到它的同步策略中.
+
+eg: 
+
+每台车都有一个String对象来标识, 并且拥有一个相应的位置坐标(x, y)
+
+Map<String, Point> locations = vehicles.getLocations();
+for(String key: locations.keySet()){
+	renderVehicle(key, locations.get(key));
+}
+
+执行更新操作的线程通过从GPS设备上获得的数据或者调度员从GUI界面上输入的数据来修改车辆位置
+void vehicleMoved(VehicleMovedEvent evt){
+	Point loc = evt.getNewLocation();
+	vehicles.setLocation(evt.getVehicledId(), loc.x, loc.y);
+}
+
+Java监视器模式实现的车辆追踪
+
+@ThreadSafe
+public class MonitorVehicletracker{
+	@GuardedBy("this")
+	private final Map<String, MutablePoint> locations; 
+
+	public MonitorVehicleTracker(Map<String, MutablePoint> locations){
+		this.locations = deepCopy(locations);
+	}
+
+	public synchronized Map<String, MutablePoint> getLocations(){
+		return deepCopy(locations);                    <---- locations 是可变的hashMap, 需要复制确保线程安全
+	}
+
+	public synchronized MutablePoint getLocation(String id){
+		MutablePoint loc = locations.get(id);
+		return loc == null ? null : new MutablePoint(loc);
+	}
+
+	public synchronized void setLocation(String id, int x, int y){
+		MutablePoint loc = locations.get(id);
+		if(loc == null){
+			throw new IllegalArgumentException("No such ID: "+ id);
+		}
+		loc.x = x;
+		loc.y = y;
+	}
+
+	private static Map<String, MutablePoint> deepCopy(Map<String, MutablePoint> m){
+		Map<String, MutablePoint> result = new HashMap<String, MutablePoint>();
+		for(String id: m.keySet()) 
+			result.put(id, new MutablePoint(m.get(id)));  <----- 该类是可变类, 需要复制确保线程安全
+		return Collections.unmodifiableMap(result);
+	}
+
+	public class MutablePoint{...}
+}
+
+eg: 基于委托的车辆追踪器
+	构造一个委托给线程安全类的车辆追踪器
+
+用不可变Point来代替MutablePoint以保存位置
+
+@Immutable
+public class Point{
+	public final int x ,y;
+	public Point(int x, int y){
+		this.x=x;
+		this.y=y;
+	}
+}
+
+
+将线程安全委托给ConcurrentHashMap
+
+@ThreadSafe
+public class DelegatingVehicleTracker{
+	private final ConcurrentMap<String, Point> locations;
+	private final Map<String, Point> unmodifiableMap;
+
+	public DelegatingVehicleTracker(Map<String, Point> points){
+		locations = new ConcurrentHashMap<String, Point>(points);
+		unmodifiableMap = Collections.unmodifiableMap(locations);
+	}
+
+	public Map<String, Point> getLocations(){
+		return unmodifiableMap<>();
+	}
+
+	public Point getLocation(String id){
+		return locations.get(id);
+	}
+
+	public void setLocation(String id, int x, int y){
+		if(locations.replace(id, new Point(x, y)) == null){
+			throw new IllegalArgumentException("Invalid vehicle name: "+ id);
+		}
+	}
+}
+
+返回locations的静态拷贝而非浅拷贝
+
+public Map<String, Point> getLocations(){
+	return Colllections.unmodifiableMap(new HashMap<String, Point>(locations));  
+	<---- 由于Map内容是不可变的, 因此只需要复制map结构, 而不用复制它的内容
+}
+
+
+将线程安全委托给多个状态变量
+
+public class VisualComponent{
+	private final List<KeyListener> keyListeners = new CopyOnWriteArrayList<KeyListener>();
+	private final List<MouseListener> mouseListeners = new CopyOnWriteArrayList<MouseListener>();
+
+	public void addKeyListener(KeyListener listener){
+		keyListener.add(listener);
+	}
+
+	public void addMouseListener(MouseListener listener){
+		mouseListener.add(listener);
+	}
+
+	public void removeKeyListener(KeyListener listener){
+		keyListeners.remove(listener);
+	}
+
+	public void removeMouseListener(MouseListener listener){
+		mouseListeners.remove(listener);
+	}
+}
+
+CopyOnWriteArray来保存各个监听器列表, 是一个线程安全的链表, 特别适用于管理监听器列表
+
+先检查后执行的操作没有用加锁机制无法保证原子性
+
+如果一个状态变量是线程安全的, 并且没有任何不变性条件来约束它的值, 在变量的操作上也不存在任何不允许的状态转换
+, 那么就可以安全的发布这个变量
+
+车辆追踪器的另一个版本, 并在这个版本中发布底层可变状态, 使用可变且线程安全的Point类
+
+把x, y放到一个数组中, 避免分别提供get方法
+
+线程安全且可变的Point类
+
+@ThreadSafe
+public class SafePoint{
+	@GuardBy("this") private int x, y;
+
+	private SafePoint(int[] a){
+		this(a[0], a[1]);
+	}
+
+	private SafePoint(SafePoint p){
+		this(p.get());
+	}
+
+	public SafePoint(int x, int y){
+		this.x = x;
+		this.y = y;
+	}
+
+	public synchronized int[] get(){
+		return new int[] {x, y};
+	}
+
+	public synchronized void set(int x, int y){
+		this.x = x; 
+		this.y = y;
+	}
+}
+
+@ThreadSafe 
+public class PublishingVehicleTracker{
+	private final Map<String, SafePoint> locations; 
+	private final Map<String, SafePoint> unmodifiedMap;
+
+	public PublishingVehicleTracker(Map<String, SafePoint> locations){
+		this.locations = new ConcurrentHashMap<String, SafePoint>)(locations);
+		this.unmodifiableMap = Collections.unmodifiableMap(this.locations);
+	}
+
+	public Map<String, SafePoint> getLocations(){
+		return unmodifiableMap;
+	}
+
+	public SafePoint getLocation(String id){
+		return locations.get(id);
+	}
+
+	public void setLocation(String id, int x, int y){
+		if(!locations.containsKey(id)) 
+			throw new Illegal
+	}
+}
+
+PublishingVehicleTracker是线程安全的, 但如果它在车辆位置有效值上施加了任何约束, 那么就不再是线程安全的.
+如果需要对车辆位置的变化进行任何判断或者当前位置变化时执行了一些操作, 那么则是线程不安全的
+
+在现有的线程安全类中添加功能
+
+1. 修改原始类, 但通常无法访问或修改类的代码
+2. 扩展这个类并添加线程安全的方法
+
+扩展Vector并增加一个"putIfAbsent"的方法
+
+@ThreadSafe
+public class BetterVector<E> extends Vector<E>{
+	public synchronized boolean putIfAbsent(E x){
+		boolean absent = !contains(x);
+		if(absent)
+			add(x);
+		return absent;
+	}
+}
+
+扩展方法比直接将代码添加到类中更加脆弱, 因为同步策略实现被分布到多个单独维护的源代码文件中, 如果底层类改变了
+同步策略, 并选择了不同的锁来保护它的状态变量, 那么子类会被破坏, 因为同步策略改变后它无法再使用正确的锁来控制
+对基类状态的并发访问.
+
+4.4.1 客户端加锁机制
+
+3. 扩展类的功能, 将扩展代码放入一个"辅助类"中
+
+@NotThreadSafe
+public class ListHelper<E>{
+	public List<E> list = Collections.synchronizedList(new ArrayList<E>());
+	...
+	public synchronized boolean putIfAbsent(E x){
+		boolean absent = !list.contains(x);
+		if(absent)
+			list.add(x);
+		return absent;	
+	} 
+}
+
+问题在于在错误的锁上进行了同步, 无论list使用哪一个锁来保护它的状态, 可以确定的是这个锁并不是ListHelper上的,
+ListHelper只是带来了同步的假象, 这意味着ListHelper相对于List其他的操作来说并不是原子的
+
+要让这个方法能正确执行, 必须使List实现客户端加锁或外部加锁时使用同一个锁。 
+
+通过客户端加锁来实现"putIfAbsent"
+
+@ThreadSafe
+public class ListHelper<E>{
+	public List<E> list = Collections.synchronizedList(new ArrayList<E>());
+	...
+	public boolean putIfAbsent(E x){
+		synchronized(list){
+			boolean absent = !list.contains(x)
+		}
+	}
+}
